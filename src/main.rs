@@ -46,7 +46,7 @@ fn loop_until_exit<R: io::BufRead>(mut reader: R) -> String {
         let mut maybe_exit = String::new();
         reader.read_line(&mut maybe_exit).expect("Failed to read line.");
         if maybe_exit.trim() == "exit" {
-            return maybe_exit;
+            return maybe_exit.trim().to_string();
         }
     }
 }
@@ -78,18 +78,16 @@ mod tests {
 
     #[test]
     fn loop_exits_if_exit_is_typed() {
-        // TODO: Now we return a string, test which string caused the exit.
+        // For these first two tests, the loop not running forever finishing indicates that the 'exit' line was picked up.
         let exit_line: &[u8] = b"exit\n";
         crate::loop_until_exit(exit_line);
 
         let exit_line_with_whitespace: &[u8] = b" exit \n";
         crate::loop_until_exit(exit_line_with_whitespace);
 
-        let exit_line_after_other_lines: &[u8] = b"not_exit\nalso_not_exit\nexit\n";
-        crate::loop_until_exit(exit_line_after_other_lines);
-
-        // TODO: Test of invalid line read handled correctly.
-
-        // The test completing means the loop has exited correctly.
+        // Checking that it's actually the 'exit' line that's picked up, rather than the two proceeding lines with similar words.
+        let exit_line_with_other_similar_lines: &[u8] = b"zexit\nexitz\nexit\n";
+        let exit_two = crate::loop_until_exit(exit_line_with_other_similar_lines);
+        assert_eq!(exit_two, "exit");
     }
 }
