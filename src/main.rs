@@ -11,17 +11,13 @@ fn main() {
 
     let listener = TcpListener::bind(address).expect("Failed to bind to address.");
 
-    // TODO: Create an extra thread to handle the for_each loop, or will be stuck forever.
-    // TODO: Add a test that multiple threads can be handled.
+    // TODO: Add a test that multiple connections can be handled.
     // TODO: Match against the stream to handle errors, as shown in the docs.
     // TODO: Add a test that bad connections fail.
     // TODO: Work out if it's ok to just keep adding threads indefinitely.
     // TODO: Ack incoming packets
-    listener.incoming()
-        .for_each(|stream| {
-            thread::spawn(move || {
-                println!("{:?}", stream.expect("Connection failed."));
-            });
+    thread::spawn(|| {
+        listen(listener);
     });
 
     // TODO: Work out why the lock is required here.
@@ -49,6 +45,15 @@ fn loop_until_exit<R: io::BufRead>(mut reader: R) -> String {
             return maybe_exit.trim().to_string();
         }
     }
+}
+
+fn listen(listener: TcpListener) {
+    listener.incoming()
+        .for_each(|stream| {
+            thread::spawn(move || {
+                println!("{:?}", stream.expect("Connection failed."));
+            });
+    });
 }
 
 #[cfg(test)]
