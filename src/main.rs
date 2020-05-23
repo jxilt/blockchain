@@ -6,10 +6,8 @@ use std::io;
 // TODO: Write two programs, have them communicate over sockets.
 fn main() {
     let args: Vec<String> = env::args().collect();
-    let port = allocate_port(args);
+    let port = allocate_port(&args);
     let address = format!("localhost:{}", port);
-
-    // TODO: Acks on the incoming packets
 
     let listener = TcpListener::bind(address).expect("Failed to bind to address.");
 
@@ -17,7 +15,8 @@ fn main() {
     // TODO: Add a test that multiple threads can be handled.
     // TODO: Match against the stream to handle errors, as shown in the docs.
     // TODO: Add a test that bad connections fail.
-    // TODO: Work out if it's ok to just keep adding tests indefinitely.
+    // TODO: Work out if it's ok to just keep adding threads indefinitely.
+    // TODO: Ack incoming packets
     listener.incoming()
         .for_each(|stream| {
             thread::spawn(move || {
@@ -25,25 +24,31 @@ fn main() {
             });
     });
 
-    loop {
-        println!("Type 'exit' to exit.");
-        let mut maybe_exit = String::new();
-        io::stdin().read_line(&mut maybe_exit).expect("Failed to read line.");
-        if maybe_exit.trim() == "exit" {
-            break;
-        }
-    }
+    // TODO: Work out why the lock is required here.
+    loop_until_exit(io::stdin().lock());
 }
 
-fn allocate_port(args: Vec<String>) -> String {
+fn allocate_port(args: &[String]) -> &str {
     return match args.len() {
         0 | 1 => {
             let default_port = "10005";
             println!("No port provided. Using default of '{}'.", default_port);
-            default_port.to_string()
+            default_port
         },
-        _ => args[1].to_string()
+        _ => &args[1]
     };
+}
+
+// We inject the reader and return the matched string to allow testing.
+fn loop_until_exit<R: io::BufRead>(mut reader: R) -> String {
+    loop {
+        println!("Type 'exit' to exit.");
+        let mut maybe_exit = String::new();
+        reader.read_line(&mut maybe_exit).expect("Failed to read line.");
+        if maybe_exit.trim() == "exit" {
+            return maybe_exit;
+        }
+    }
 }
 
 #[cfg(test)]
@@ -51,22 +56,40 @@ mod tests {
     #[test]
     fn default_port_is_allocated_if_less_than_two_args() {
         let default_port = "10005";
+        let input_port = "10006";
+        assert_ne!(input_port, default_port);
+
+        let zero_args = vec![];
+        let one_arg = vec!["program/being/run".to_string()];
+        let two_args = vec!["program/being/run".to_string(), input_port.to_string()];
 
         // Default port is allocated if there are zero arguments.
-        let args = vec![];
-        let allocated_port = crate::allocate_port(args);
+        let allocated_port = crate::allocate_port(&zero_args);
         assert_eq!(default_port, allocated_port);
 
         // Default port is also allocated if there is one argument.
-        let args = vec!["program/being/run".to_string()];
-        let allocated_port = crate::allocate_port(args);
+        let allocated_port = crate::allocate_port(&one_arg);
         assert_eq!(default_port, allocated_port);
 
         // Default port is not allocated if there are two arguments.
-        let input_port = "10006";
-        assert_ne!(input_port, default_port);
-        let args = vec!["program/being/run".to_string(), input_port.to_string()];
-        let allocated_port = crate::allocate_port(args);
+        let allocated_port = crate::allocate_port(&two_args);
         assert_eq!(input_port, allocated_port);
+    }
+
+    #[test]
+    fn loop_exits_if_exit_is_typed() {
+        // TODO: Now we return a string, test which string caused the exit.
+        let exit_line: &[u8] = b"exit\n";
+        crate::loop_until_exit(exit_line);
+
+        let exit_line_with_whitespace: &[u8] = b" exit \n";
+        crate::loop_until_exit(exit_line_with_whitespace);
+
+        let exit_line_after_other_lines: &[u8] = b"not_exit\nalso_not_exit\nexit\n";
+        crate::loop_until_exit(exit_line_after_other_lines);
+
+        // TODO: Test of invalid line read handled correctly.
+
+        // The test completing means the loop has exited correctly.
     }
 }
