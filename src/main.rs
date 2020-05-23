@@ -4,18 +4,33 @@ use std::thread;
 use std::io;
 
 // TODO: Write two programs, have them communicate over sockets.
-    // TODO: Parse the incoming packets.
 fn main() {
     let args: Vec<String> = env::args().collect();
-    let port = &args[1];
+
+    // TODO: Add a test to check default is used properly
+    let port = match args.len() {
+        0 | 1 => {
+            let default_port = "10005";
+            println!("No port provided. Using default of '{}'.", default_port);
+            "10005"
+        },
+        _ => &args[1]
+    };
+
     let address = format!("localhost:{}", port);
 
-    thread::spawn(move || {
-        let listener = TcpListener::bind(address).expect("Failed to bind to address.");
+    // TODO: Acks on the incoming packets
+    // TODO: Handle more than one incoming connection at once.
+    
 
-        for stream in listener.incoming() {
-            println!("{:?}", stream.expect("Connection failed."));
-        }
+    let listener = TcpListener::bind(address).expect("Failed to bind to address.");
+
+
+    listener.incoming()
+        .for_each(|stream| {
+            thread::spawn(move || {
+                println!("{:?}", stream.expect("Connection failed."));
+            });
     });
 
     loop {
