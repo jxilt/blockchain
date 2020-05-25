@@ -1,67 +1,68 @@
 use std::env;
-use std::net::TcpListener;
+use std::net::{TcpListener, TcpStream};
 use std::thread;
 use std::io;
 use std::str;
 use std::io::{BufRead, Write, BufReader, BufWriter};
 
 // TODO: Write two programs, have them communicate over sockets.
+// TODO: Test that an exception is thrown if args are wrong.
 fn main() {
     let args = env::args().collect::<Vec<String>>();
-    // TODO: Test that an exception is thrown if args are wrong.
-    // TODO: Wrap the two statements below into a single function.
-    let port = match process_args(&args) {
-        Ok(port) => port,
-        Err(e) => panic!(e)
-    };
-    let address = format!("localhost:{}", port);
+    let address = set_address(&args);
 
     // TODO: Consider subbing this raw approach out for MQs.
-    let listener = TcpListener::bind(address).expect("Failed to bind to address.");
-    thread::spawn(|| {
-        listen(listener);
-    });
+    listen(address.to_string());
 
     // TODO: Work out why the lock is required here.
     loop_until_exit(io::stdin().lock());
 }
 
-// Processes the arguments and returns the port number.
+// Creates the address based on the port passed in on the command line.
 // Two arguments are expected, with the port in second position.
-fn process_args(args: &[String]) -> Result<String, String> {
-    return match args.len() {
-        0 => Err("Too few arguments. Usage is '<program_name> <port>.".to_string()),
+fn set_address(args: &[String]) -> String {
+    let port = match args.len() {
+        0 => panic!("Too few arguments. Usage is '<program_name> <port>.".to_string()),
         1 => {
             let default_port = "10005";
             println!("No port provided. Using default of '{}'.", default_port);
-            Ok(default_port.to_string())
+            default_port.to_string()
         },
         2 => {
             let provided_port = &args[1];
             println!("Using provided port '{}'.", provided_port);
-            Ok(provided_port.to_string())
+            provided_port.to_string()
         },
-        _ => Err("Too many arguments. Usage is '<program_name> <port>.".to_string())
+        _ => panic!("Too many arguments. Usage is '<program_name> <port>.".to_string())
     };
+
+    return format!("localhost:{}", port);
 }
 
 // TODO: Add a test that multiple connections can be handled.
+fn listen(address: String) {
+    // The listener has its own thread, and generates a thread for each incoming connection.
+    thread::spawn(|| {
+        let listener = TcpListener::bind(address).expect("Failed to bind to address.");
+        listener.incoming().for_each(|incoming| {
+            thread::spawn(move || {
+                handle_incoming(incoming);
+            });
+        });
+    });
+}
+
 // TODO: Add a test that bad connections fail.
 // TODO: Move away from just adding threads indefinitely.
 // TODO: Store packets before ACKing.
-fn listen(listener: TcpListener) {
-    listener.incoming()
-        .for_each(|incoming| {
-            thread::spawn(move || {
-                let stream = incoming.expect("Connection failed.");
+fn handle_incoming(incoming: Result<TcpStream, io::Error>) {
+    let stream = incoming.expect("Connection failed.");
 
-                let buf_read = BufReader::new(&stream);
-                let contents = check_packet(buf_read);
+    let buf_read = BufReader::new(&stream);
+    let contents = check_packet(buf_read);
 
-                let mut buf_writer = BufWriter::new(&stream);
-                write_response(&mut buf_writer, contents);
-            });
-    });
+    let mut buf_writer = BufWriter::new(&stream);
+    write_response(&mut buf_writer, contents);
 }
 
 fn check_packet<R: BufRead>(mut reader: R) -> Result<(), String> {
@@ -108,17 +109,19 @@ mod tests {
         let default_port = "10005";
         let input_port = "10006";
         assert_ne!(input_port, default_port);
+        let default_address = format!("localhost:{}", default_port);
+        let address_with_input = format!("localhost:{}", input_port);
 
         let no_port_provided = vec!["program/being/run".to_string()];
         let port_provided = vec!["program/being/run".to_string(), input_port.to_string()];
 
         // Default port is allocated if there is one argument.
-        let port = crate::process_args(&no_port_provided);
-        assert!(port.is_ok() && port.unwrap() == default_port);
+        let address_one = crate::set_address(&no_port_provided);
+        assert_eq!(default_address, address_one);
 
         // Default port is not allocated if there are two arguments.
-        let port = crate::process_args(&port_provided);
-        assert!(port.is_ok() && port.unwrap() == input_port);
+        let address_two = crate::set_address(&port_provided);
+        assert_eq!(address_with_input, address_two);
     }
 
     #[test]
