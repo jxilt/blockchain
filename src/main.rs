@@ -8,8 +8,12 @@ use std::io::{BufRead, Write, BufReader, BufWriter};
 // TODO: Write two programs, have them communicate over sockets.
 fn main() {
     let args = env::args().collect::<Vec<String>>();
-    // TODO: Modify this to echo up the underlying exception.
-    let port = process_args(&args).expect("Could not process args.");
+    // TODO: Test that an exception is thrown if args are wrong.
+    // TODO: Wrap the two statements below into a single function.
+    let port = match process_args(&args) {
+        Ok(port) => port,
+        Err(e) => panic!(e)
+    };
     let address = format!("localhost:{}", port);
 
     // TODO: Consider subbing this raw approach out for MQs.
@@ -26,7 +30,7 @@ fn main() {
 // Two arguments are expected, with the port in second position.
 fn process_args(args: &[String]) -> Result<String, String> {
     return match args.len() {
-        0 => Err("Too few arguments. Use '<program_name> <port>.".to_string()),
+        0 => Err("Too few arguments. Usage is '<program_name> <port>.".to_string()),
         1 => {
             let default_port = "10005";
             println!("No port provided. Using default of '{}'.", default_port);
@@ -37,7 +41,7 @@ fn process_args(args: &[String]) -> Result<String, String> {
             println!("Using provided port '{}'.", provided_port);
             Ok(provided_port.to_string())
         },
-        _ => Err("Too many arguments. Use '<program_name> <port>.".to_string())
+        _ => Err("Too many arguments. Usage is '<program_name> <port>.".to_string())
     };
 }
 
