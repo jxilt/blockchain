@@ -12,7 +12,7 @@ fn main() {
     let address = set_address(&args);
 
     // TODO: Consider subbing this raw approach out for MQs.
-    listen(address.to_string());
+    listen(address);
 
     // TODO: Work out why the lock is required here.
     loop_until_exit(io::stdin().lock());
@@ -22,18 +22,18 @@ fn main() {
 // Two arguments are expected, with the port in second position.
 fn set_address(args: &[String]) -> String {
     let port = match args.len() {
-        0 => panic!("Too few arguments. Usage is '<program_name> <port>.".to_string()),
+        0 => panic!("Too few arguments. Usage is '<program_name> <port>."),
         1 => {
             let default_port = "10005";
             println!("No port provided. Using default of '{}'.", default_port);
-            default_port.to_string()
+            default_port
         },
         2 => {
             let provided_port = &args[1];
             println!("Using provided port '{}'.", provided_port);
-            provided_port.to_string()
+            provided_port
         },
-        _ => panic!("Too many arguments. Usage is '<program_name> <port>.".to_string())
+        _ => panic!("Too many arguments. Usage is '<program_name> <port>.")
     };
 
     return format!("localhost:{}", port);
@@ -100,8 +100,17 @@ fn loop_until_exit<R: BufRead>(mut reader: R) -> String {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn process_args_expects_two_args() {
-        // TODO: Write tests of zero and 2+ args
+    #[should_panic(expected = "Too few arguments. Usage is '<program_name> <port>.")]
+    fn process_args_panics_with_zero_args() {
+        let no_args = vec![];
+        crate::set_address(&no_args);
+    }
+
+    #[test]
+    #[should_panic(expected = "Too many arguments. Usage is '<program_name> <port>.")]
+    fn process_args_panics_with_more_than_two_args() {
+        let three_args = vec!["place".to_string(), "holder".to_string(), "values".to_string()];
+        crate::set_address(&three_args);
     }
 
     #[test]
@@ -112,15 +121,15 @@ mod tests {
         let default_address = format!("localhost:{}", default_port);
         let address_with_input = format!("localhost:{}", input_port);
 
-        let no_port_provided = vec!["program/being/run".to_string()];
-        let port_provided = vec!["program/being/run".to_string(), input_port.to_string()];
+        let args_no_port_provided = vec!["program/being/run".to_string()];
+        let args_port_provided = vec!["program/being/run".to_string(), input_port.to_string()];
 
         // Default port is allocated if there is one argument.
-        let address_one = crate::set_address(&no_port_provided);
+        let address_one = crate::set_address(&args_no_port_provided);
         assert_eq!(default_address, address_one);
 
         // Default port is not allocated if there are two arguments.
-        let address_two = crate::set_address(&port_provided);
+        let address_two = crate::set_address(&args_port_provided);
         assert_eq!(address_with_input, address_two);
     }
 
@@ -128,18 +137,17 @@ mod tests {
     fn check_packet_errors_on_invalid_packets() {
         let err = Err("Unrecognised packet.".to_string());
 
-        let empty_packet: &[u8] = b"";
-        let empty_packet_with_newline: &[u8] = b"";
-        let first_half_packet: &[u8] = b"BLOCKCHAIN";
-        let second_half_packet: &[u8] = b"1.0";
-        
+        let invalid_packets: Vec<&[u8]> = vec![
+            b"", // Empty packet.
+            b"\n", // Empty packet with new-line.
+            b"BLOCKCHAIN", // First half of a valid packet.
+            b"1.0" // Second half of a valid packet.
+        ];
         let valid_packet: &[u8] = b"BLOCKCHAIN 1.0";
 
-        assert_eq!(err, crate::check_packet(empty_packet));
-        assert_eq!(err, crate::check_packet(empty_packet_with_newline));
-        assert_eq!(err, crate::check_packet(first_half_packet));
-        assert_eq!(err, crate::check_packet(second_half_packet));
-
+        for packet in invalid_packets {
+            assert_eq!(err, crate::check_packet(packet));
+        }
         assert_eq!(Ok(()), crate::check_packet(valid_packet));
     }
 
