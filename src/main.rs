@@ -99,12 +99,12 @@ fn loop_until_exit<R: BufRead>(mut reader: R) -> String {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn two_arguments_are_expected() {
+    fn process_args_expects_two_args() {
         // TODO: Write tests of zero and 2+ args
     }
 
     #[test]
-    fn default_port_is_allocated_if_less_than_two_args() {
+    fn process_args_allocates_a_default_port_if_necessary() {
         let default_port = "10005";
         let input_port = "10006";
         assert_ne!(input_port, default_port);
@@ -122,7 +122,7 @@ mod tests {
     }
 
     #[test]
-    fn check_packet_matches_packet() {
+    fn check_packet_errors_on_invalid_packets() {
         let err = Err("Unrecognised packet.".to_string());
 
         let empty_packet: &[u8] = b"";
@@ -141,7 +141,7 @@ mod tests {
     }
 
     #[test]
-    fn correct_response_is_written() {
+    fn write_response_writes_correct_response() {
         let valid_contents = Ok(());
         let invalid_contents = Err("".to_string());
 
@@ -159,7 +159,7 @@ mod tests {
     // TODO: Listener tests - test can connect, test empty message handled, test protocol recognised, test non-protocol non-recognised, test multiple connections
 
     #[test]
-    fn loop_exits_if_exit_is_typed() {
+    fn loop_until_exit_exits_if_exit_is_typed() {
         let exit_line: &[u8] = b"exit\n";
         let exit_line_with_whitespace: &[u8] = b" exit \n";
         let exit_line_with_other_similar_lines: &[u8] = b"zexit\nexitz\nexit\n";
