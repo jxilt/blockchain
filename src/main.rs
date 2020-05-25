@@ -8,7 +8,8 @@ use std::io::{BufRead, Write, BufReader, BufWriter};
 // TODO: Write two programs, have them communicate over sockets.
 fn main() {
     let args = env::args().collect::<Vec<String>>();
-    let port = allocate_port(&args);
+    // TODO: Modify this to echo up the underlying exception.
+    let port = process_args(&args).expect("Could not process args.");
     let address = format!("localhost:{}", port);
 
     // TODO: Consider subbing this raw approach out for MQs.
@@ -21,21 +22,27 @@ fn main() {
     loop_until_exit(io::stdin().lock());
 }
 
-// TODO: Split the parsing of command line args from the port allocation.
-fn allocate_port(args: &[String]) -> &str {
+// Processes the arguments and returns the port number.
+// Two arguments are expected, with the port in second position.
+fn process_args(args: &[String]) -> Result<String, String> {
     return match args.len() {
-        0 | 1 => {
+        0 => Err("Too few arguments. Use '<program_name> <port>.".to_string()),
+        1 => {
             let default_port = "10005";
             println!("No port provided. Using default of '{}'.", default_port);
-            default_port
+            Ok(default_port.to_string())
         },
-        _ => &args[1]
+        2 => {
+            let provided_port = &args[1];
+            println!("Using provided port '{}'.", provided_port);
+            Ok(provided_port.to_string())
+        },
+        _ => Err("Too many arguments. Use '<program_name> <port>.".to_string())
     };
 }
 
 // TODO: Add a test that multiple connections can be handled.
 // TODO: Add a test that bad connections fail.
-// TODO: Match against the stream to handle errors, as shown in the docs.
 // TODO: Move away from just adding threads indefinitely.
 // TODO: Store packets before ACKing.
 fn listen(listener: TcpListener) {
@@ -88,23 +95,26 @@ fn loop_until_exit<R: BufRead>(mut reader: R) -> String {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn two_arguments_are_expected() {
+        // TODO: Write tests of zero and 2+ args
+    }
+
+    #[test]
     fn default_port_is_allocated_if_less_than_two_args() {
         let default_port = "10005";
         let input_port = "10006";
         assert_ne!(input_port, default_port);
 
-        let zero_args = vec![];
-        let one_arg = vec!["program/being/run".to_string()];
-        let two_args = vec!["program/being/run".to_string(), input_port.to_string()];
-
-        // Default port is allocated if there are zero arguments.
-        assert_eq!(default_port, crate::allocate_port(&zero_args));
+        let no_port_provided = vec!["program/being/run".to_string()];
+        let port_provided = vec!["program/being/run".to_string(), input_port.to_string()];
 
         // Default port is allocated if there is one argument.
-        assert_eq!(default_port, crate::allocate_port(&one_arg));
+        let port = crate::process_args(&no_port_provided);
+        assert!(port.is_ok() && port.unwrap() == default_port);
 
         // Default port is not allocated if there are two arguments.
-        assert_eq!(input_port, crate::allocate_port(&two_args));
+        let port = crate::process_args(&port_provided);
+        assert!(port.is_ok() && port.unwrap() == input_port);
     }
 
     #[test]
