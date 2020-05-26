@@ -4,7 +4,6 @@ use std::io;
 use std::str;
 use std::io::{BufRead, Write, BufReader, BufWriter};
 
-// TODO: Add a test that multiple connections can be handled.
 pub fn listen(address: String) {
     // The listener has its own thread, and generates a thread for each incoming connection.
     thread::spawn(|| {
@@ -17,14 +16,13 @@ pub fn listen(address: String) {
     });
 }
 
-// TODO: Add a test that bad connections fail.
 // TODO: Move away from just adding threads indefinitely.
 // TODO: Store packets before ACKing.
 fn handle_incoming(incoming: Result<TcpStream, io::Error>) {
     let stream = incoming.expect("Connection failed.");
 
-    let buf_read = BufReader::new(&stream);
-    let contents = check_packet(buf_read);
+    let buf_reader = BufReader::new(&stream);
+    let contents = check_packet(buf_reader);
 
     let mut buf_writer = BufWriter::new(&stream);
     write_response(&mut buf_writer, contents);
@@ -32,6 +30,7 @@ fn handle_incoming(incoming: Result<TcpStream, io::Error>) {
 
 fn check_packet<R: BufRead>(mut reader: R) -> Result<(), String> {
     let mut line = String::new();
+    // TODO: Handle packets without a newline.
     reader.read_line(&mut line).expect("Reading failed.");
 
     let tokens = line.split_whitespace().collect::<Vec<&str>>();
@@ -52,39 +51,55 @@ fn write_response<W: Write>(writer: &mut W, contents: Result<(), String>) {
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn check_packet_errors_on_invalid_packets() {
-        let err = Err("Unrecognised packet.".to_string());
+    use std::net::TcpStream;
+    use std::io::{BufReader, BufWriter, BufRead, Write};
+    // TODO: Repurpose tests to only test public function `listen`.
 
+    #[test]
+    fn listen_responds_err_to_invalid_packets() {
+        let address = "localhost:10005";
+        super::listen(address.to_string());
+
+        // TODO: Tests of packets with missing newline.
         let invalid_packets: Vec<&[u8]> = vec![
-            b"", // Empty packet.
-            b"\n", // Empty packet with new-line.
-            b"BLOCKCHAIN", // First half of a valid packet.
-            b"1.0" // Second half of a valid packet.
+            b"\n", // Empty packet.
+            b"BLOCKCHAIN\n", // First half of a valid packet.
+            b"1.0\n" // Second half of a valid packet.
         ];
-        let valid_packet: &[u8] = b"BLOCKCHAIN 1.0";
 
-        for packet in invalid_packets {
-            assert_eq!(err, super::check_packet(packet));
+        for invalid_packet in invalid_packets {
+            // TODO: Refactor common code in this and the following test.
+            let client = TcpStream::connect(address).unwrap();
+            let mut buf_reader = BufReader::new(&client);
+            let mut buf_writer = BufWriter::new(&client);
+
+            buf_writer.write(invalid_packet).unwrap();
+            buf_writer.flush().unwrap();
+
+            let mut response = String::new();
+            buf_reader.read_line(&mut response).unwrap();
+
+            assert_eq!("ERR\n".to_string(), response);
         }
-        assert_eq!(Ok(()), super::check_packet(valid_packet));
     }
 
     #[test]
-    fn write_response_writes_correct_response() {
-        let valid_contents = Ok(());
-        let invalid_contents = Err("".to_string());
+    fn listen_responds_ack_to_valid_packets() {
+        let address = "localhost:10005";
+        super::listen(address.to_string());
 
-        let mut valid_output = vec![];
-        super::write_response(&mut valid_output, valid_contents);
-        let valid_utf8 = String::from_utf8(valid_output).expect("Invalid UTF-8 string.");
-        assert_eq!("ACK\n".to_string(), valid_utf8);
+        let valid_packet: &[u8] = b"BLOCKCHAIN 1.0\n";
+        let client = TcpStream::connect(address).unwrap();
+        let mut buf_reader = BufReader::new(&client);
+        let mut buf_writer = BufWriter::new(&client);
 
-        let mut invalid_output = vec![];
-        super::write_response(&mut invalid_output, invalid_contents);
-        let invalid_utf8 = String::from_utf8(invalid_output).expect("Invalid UTF-8 string.");
-        assert_eq!("ERR\n".to_string(), invalid_utf8);
+        buf_writer.write(valid_packet).unwrap();
+        buf_writer.flush().unwrap();
+
+        let mut response = String::new();
+        buf_reader.read_line(&mut response).unwrap();
+        assert_eq!("ACK\n".to_string(), response);
     }
 
-    // TODO: Listener tests - test can connect, test empty message handled, test protocol recognised, test non-protocol non-recognised, test multiple connections
+    // TODO: Test multiple connections, test bad connections fail.
 }

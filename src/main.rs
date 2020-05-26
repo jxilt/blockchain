@@ -52,6 +52,8 @@ fn loop_until_exit<R: BufRead>(mut reader: R) -> String {
 
 #[cfg(test)]
 mod tests {
+    // TODO: Repurpose tests to only test public functions (plus create one).
+
     #[test]
     #[should_panic(expected = "Too few arguments. Usage is '<program_name> <port>.")]
     fn process_args_panics_with_zero_args() {
