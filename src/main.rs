@@ -1,6 +1,7 @@
 use std::env;
 use std::io;
 use std::io::BufRead;
+use std::sync::mpsc;
 
 mod listener;
 
@@ -10,10 +11,14 @@ fn main() {
     let address = set_address(&args);
 
     // TODO: Consider subbing this raw approach out for MQs.
-    listener::listen(address);
+    // TODO: Move the channel set-up back into some listener class.
+    let (sender, receiver) = mpsc::channel::<u8>();
+    listener::listen(receiver, address);
 
     // TODO: Work out why the lock is required here.
     loop_until_exit(io::stdin().lock());
+
+    listener::stop_listening(sender);
 }
 
 // Creates the address based on the port passed in on the command line.

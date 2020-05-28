@@ -3,12 +3,13 @@ use std::thread;
 use std::io;
 use std::str;
 use std::io::{BufRead, Write, BufReader, BufWriter};
+use std::sync::mpsc;
 
 /// Listens for TCP connections at the given address.
 /// 
 /// Expects packets of the form "BLOCKCHAIN 1.0\n", to which it will respond 
 /// "ACK\n". For any other packet, it will respond "ERR\n".
-pub fn listen(address: String) {
+pub fn listen(receiver: mpsc::Receiver<u8>, address: String) {
     let listener = TcpListener::bind(address).expect("Failed to bind listener to address.");
     listener.set_nonblocking(true).expect("Failed to set listener as non-blocking.");
 
@@ -22,10 +23,17 @@ pub fn listen(address: String) {
                     });
                 },
                 // The listener has not received a new connection yet.
-                Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
+                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
                     // TODO: Consider adding a sleep here.
-                    // TODO: Read from port to kill.
-                    continue;
+                    // If we received a kill signal, we stop processing incoming connections.
+                    match receiver.try_recv() {
+                        Ok(_) => {
+                            println!("Stopping processing incoming connections.");
+                            break
+                        },
+                        // TODO: Better way to ignore error?
+                        Err(_) => {}
+                    }
                 },
                 Err(e) => {
                     // TODO: Print err message in panic.
@@ -37,9 +45,8 @@ pub fn listen(address: String) {
     });
 }
 
-// TODO: Add method to stop listening.
-pub fn stop_listening() {
-
+pub fn stop_listening(sender: mpsc::Sender<u8>) {
+    sender.send(0).expect("The receiver has already hung up.");
 }
 
 // TODO: Move away from just adding threads indefinitely.
@@ -78,6 +85,7 @@ fn write_response<W: Write>(writer: &mut W, contents: Result<(), String>) {
 mod tests {
     use std::net::TcpStream;
     use std::io::{BufReader, BufWriter, BufRead, Write};
+    use std::sync::mpsc;
 
     fn write_to_listener_and_get_response(address: String, packet_to_write: &[u8]) -> String {
         let stream = TcpStream::connect(address).expect("Failed to connect to server.");
@@ -101,7 +109,8 @@ mod tests {
     #[test]
     fn listen_responds_err_to_invalid_packets() {
         let address = "localhost:10005";
-        super::listen(address.to_string());
+        let (sender, receiver) = mpsc::channel::<u8>();
+        super::listen(receiver, address.to_string());
 
         let invalid_packets: Vec<&[u8]> = vec![
             b"\n", // Empty packet.
@@ -113,23 +122,29 @@ mod tests {
             let response = write_to_listener_and_get_response(address.to_string(), invalid_packet);
             assert_eq!("ERR\n".to_string(), response);
         }
+
+        super::stop_listening(sender);
     }
 
     #[test]
     fn listen_responds_ack_to_valid_packets() {
         let address = "localhost:10005";
-        super::listen(address.to_string());
+        let (sender, receiver) = mpsc::channel::<u8>();
+        super::listen(receiver, address.to_string());
 
         let valid_packet = b"BLOCKCHAIN 1.0\n";
 
         let response = write_to_listener_and_get_response(address.to_string(), valid_packet);
         assert_eq!("ACK\n".to_string(), response);
+
+        super::stop_listening(sender);
     }
 
-    #[test]
+    // #[test]
     fn listen_responds_to_multiple_connections_concurrently() {
         let address = "localhost:10005";
-        super::listen(address.to_string());
+        let (sender, receiver) = mpsc::channel::<u8>();
+        super::listen(receiver, address.to_string());
 
         let valid_packet = b"BLOCKCHAIN 1.0\n";
         let invalid_packet = b"\n";
@@ -145,5 +160,9 @@ mod tests {
 
         assert_eq!("ACK\n".to_string(), first_response);
         assert_eq!("ERR\n".to_string(), second_response);
+
+        super::stop_listening(sender);
     }
+
+    // TODO: Test of stopping listening.
 }
