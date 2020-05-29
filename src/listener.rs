@@ -11,10 +11,12 @@ use std::sync::mpsc;
 /// "ACK\n". For any other packet, it will respond "ERR\n".
 pub fn listen(receiver: mpsc::Receiver<u8>, address: String) {
     let listener = TcpListener::bind(address).expect("Failed to bind listener to address.");
-    listener.set_nonblocking(true).expect("Failed to set listener as non-blocking.");
+    // We set the listener to non-blocking so that we can check for interrupts, below.
+    listener.set_nonblocking(true).expect("Failed to set listener to non-blocking.");
 
-    // The listener has its own thread, and generates a thread for each incoming connection.
+    // The listener needs its own thread to listen for incoming connections.
     thread::spawn(move || {
+        // Each incoming connection gets its own thread to allow concurrent connections.
         for stream in listener.incoming() {
             match stream {
                 Ok(_) => {
@@ -25,7 +27,7 @@ pub fn listen(receiver: mpsc::Receiver<u8>, address: String) {
                 // The listener has not received a new connection yet.
                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
                     // TODO: Consider adding a sleep here.
-                    // If we received a kill signal, we stop processing incoming connections.
+                    // We check for an interrupt.
                     match receiver.try_recv() {
                         Ok(_) => {
                             println!("Stopping processing incoming connections.");
@@ -46,19 +48,22 @@ pub fn listen(receiver: mpsc::Receiver<u8>, address: String) {
 }
 
 pub fn stop_listening(sender: mpsc::Sender<u8>) {
-    sender.send(0).expect("The receiver has already hung up.");
+    sender.send(0).expect("The listener has already stopped listening.");
 }
 
-// TODO: Move away from just adding threads indefinitely.
 // TODO: Store packets before ACKing.
 fn handle_incoming(incoming: Result<TcpStream, io::Error>) {
     let stream = incoming.expect("Incoming connection failed.");
+    // We reverse the non-blocking behaviour set at the listener level.
+    stream.set_nonblocking(false).expect("Failed to set stream to blocking.");
 
     let buf_reader = BufReader::new(&stream);
     let contents = check_packet(buf_reader);
 
     let mut buf_writer = BufWriter::new(&stream);
     write_response(&mut buf_writer, contents);
+
+    // TODO: Do I need to shut down the stream?
 }
 
 fn check_packet<R: BufRead>(mut reader: R) -> Result<(), String> {
@@ -106,6 +111,8 @@ mod tests {
         return response;
     }
 
+    // TODO: Test of stopping listening.
+
     #[test]
     fn listen_responds_err_to_invalid_packets() {
         let address = "localhost:10005";
@@ -140,17 +147,27 @@ mod tests {
         super::stop_listening(sender);
     }
 
-    // #[test]
+    #[test]
     fn listen_responds_to_multiple_connections_concurrently() {
-        let address = "localhost:10005";
+        let address = "localhost:10025";
         let (sender, receiver) = mpsc::channel::<u8>();
         super::listen(receiver, address.to_string());
 
         let valid_packet = b"BLOCKCHAIN 1.0\n";
         let invalid_packet = b"\n";
 
-        // To test concurrent connections, we nest a second write/read inside 
-        // the first.
+        // Interleaved connections - write to both, then read from both.
+        let first_stream = TcpStream::connect(address).expect("Failed to connect to server.");
+        let second_stream = TcpStream::connect(address).expect("Failed to connect to server.");
+        write_to_listener(&first_stream, valid_packet);
+        write_to_listener(&second_stream, invalid_packet);
+        let first_response = get_response(&first_stream);
+        let second_response = get_response(&second_stream);
+
+        assert_eq!("ACK\n".to_string(), first_response);
+        assert_eq!("ERR\n".to_string(), second_response);
+
+        // Nested connections - write to first, write then read from the second, then read from the first.
         let first_stream = TcpStream::connect(address).expect("Failed to connect to server.");
         let second_stream = TcpStream::connect(address).expect("Failed to connect to server.");
         write_to_listener(&first_stream, valid_packet);
@@ -163,6 +180,4 @@ mod tests {
 
         super::stop_listening(sender);
     }
-
-    // TODO: Test of stopping listening.
 }
