@@ -1,25 +1,27 @@
 use std::env;
-use std::io;
-use std::io::BufRead;
+use std::io::{BufRead, stdin};
+use listener::Listener;
 
 mod listener;
 
-// TODO: Write two programs, have them communicate over sockets.
-fn main() {
+/// Creates a listener and loops until the user breaks.
+/// 
+/// Expects two env arguments, with the port in second position.
+pub fn main() {
     let args = env::args().collect::<Vec<String>>();
     let address = get_address(&args);
 
-    // TODO: Consider subbing this raw approach out for MQs.
-    let listener = listener::Listener::new(address);
+    let listener = Listener::new(address);
 
     // TODO: Work out why the lock is required here.
-    loop_until_exit(io::stdin().lock());
+    loop_until_user_breaks(stdin().lock());
 
     listener.stop_listening();
 }
 
-// Creates the address based on the port passed in on the command line.
-// Two arguments are expected, with the port in second position.
+/// Creates the address based on the port passed in on the command line.
+/// 
+/// Expects two arguments, with the port in second position.
 fn get_address(args: &[String]) -> String {
     let port = match args.len() {
         0 => panic!("Too few arguments. Usage is '<program_name> <port>."),
@@ -39,12 +41,12 @@ fn get_address(args: &[String]) -> String {
     return format!("localhost:{}", port);
 }
 
-// Loop until the user types 'exit'.
-// We inject the reader and return the matched string to allow testing.
-fn loop_until_exit<R: BufRead>(mut reader: R) -> String {
+/// Loop until the user types 'exit'.
+fn loop_until_user_breaks<R: BufRead>(mut reader: R) -> String {
     loop {
         println!("Type 'exit' to exit.");
         let mut maybe_exit = String::new();
+        
         reader.read_line(&mut maybe_exit).expect("Failed to read line.");
         if maybe_exit.trim() == "exit" {
             return maybe_exit.trim().to_string();
@@ -58,14 +60,14 @@ mod tests {
     #[should_panic(expected = "Too few arguments. Usage is '<program_name> <port>.")]
     fn process_args_panics_with_zero_args() {
         let no_args = vec![];
-        crate::get_address(&no_args);
+        super::get_address(&no_args);
     }
 
     #[test]
     #[should_panic(expected = "Too many arguments. Usage is '<program_name> <port>.")]
     fn process_args_panics_with_more_than_two_args() {
         let three_args = vec!["place".to_string(), "holder".to_string(), "values".to_string()];
-        crate::get_address(&three_args);
+        super::get_address(&three_args);
     }
 
     #[test]
@@ -80,11 +82,11 @@ mod tests {
         let args_port_provided = vec!["program/being/run".to_string(), input_port.to_string()];
 
         // Default port is allocated if there is one argument.
-        let address_one = crate::get_address(&args_no_port_provided);
+        let address_one = super::get_address(&args_no_port_provided);
         assert_eq!(default_address, address_one);
 
         // Default port is not allocated if there are two arguments.
-        let address_two = crate::get_address(&args_port_provided);
+        let address_two = super::get_address(&args_port_provided);
         assert_eq!(address_with_input, address_two);
     }
 
@@ -95,11 +97,11 @@ mod tests {
         let exit_line_with_other_similar_lines: &[u8] = b"zexit\nexitz\nexit\n";
 
         // For these first two tests, the loop not running forever finishing indicates that the 'exit' line was picked up.
-        crate::loop_until_exit(exit_line);
-        crate::loop_until_exit(exit_line_with_whitespace);
+        super::loop_until_user_breaks(exit_line);
+        super::loop_until_user_breaks(exit_line_with_whitespace);
 
         // Checking that it's actually the 'exit' line that's picked up, rather than the two proceeding lines with similar words.
-        let exit_two = crate::loop_until_exit(exit_line_with_other_similar_lines);
+        let exit_two = super::loop_until_user_breaks(exit_line_with_other_similar_lines);
         assert_eq!(exit_two, "exit");
     }
 }

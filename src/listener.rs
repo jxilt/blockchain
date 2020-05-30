@@ -1,24 +1,22 @@
+use std::io::{BufRead, Write, BufReader, BufWriter, ErrorKind::WouldBlock};
 use std::net::{TcpListener, TcpStream};
-use std::thread;
-use std::io;
 use std::str;
-use std::io::{BufRead, Write, BufReader, BufWriter};
 use std::sync::mpsc::{channel, Sender, Receiver};
+use std::thread;
 use std::thread::JoinHandle;
 
-/// Listens for and responds to TCP connections at the given address.
-/// 
-/// Expects packets of the form "BLOCKCHAIN 1.0\n", to which it will respond 
-/// "ACK\n". For any other packet, it will respond "ERR\n".
 pub struct Listener {
     sender: Sender<u8>,
     join_handle: JoinHandle<()>
 }
 
 impl Listener {
+    /// Listens for and responds to TCP connections at the given address.
+    /// 
+    /// Expects packets of the form "BLOCKCHAIN 1.0\n", to which it will respond 
+    /// "ACK\n". For any other packet, it will respond "ERR\n".
     pub fn new(address: String) -> Listener {
         let (sender, receiver) = channel::<u8>();
-
         let join_handle = Listener::listen(receiver, address);
 
         Listener {
@@ -29,9 +27,8 @@ impl Listener {
 
     // Stop listening for TCP connections.
     pub fn stop_listening(self) {
-        // TODO: Handle these results.
-        self.sender.send(0);
-        self.join_handle.join();
+        self.sender.send(0).ok();
+        self.join_handle.join().ok();
     }
 
     fn listen(receiver: Receiver<u8>, address: String) -> JoinHandle<()> {
@@ -50,16 +47,14 @@ impl Listener {
                         });
                     },
                     // The listener has not received a new connection yet.
-                    Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
+                    Err(e) if e.kind() == WouldBlock => {
                         // We check for an interrupt.
                         if receiver.try_recv().is_ok() {
                             break;
                         }
                         // TODO: Consider adding a sleep here.
                     },
-                    Err(_) => {
-                        // We ignore the failed connection.
-                    }
+                    Err(_) => ()
                 }
             }
         });
@@ -75,8 +70,6 @@ impl Listener {
 
         let mut buf_writer = BufWriter::new(&stream);
         Listener::write_response(&mut buf_writer, contents);
-
-        // TODO: Do I need to shut down the stream?
     }
 
     fn check_packet<R: BufRead>(mut reader: R) -> Result<(), String> {
