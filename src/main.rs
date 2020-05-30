@@ -1,30 +1,26 @@
 use std::env;
 use std::io;
 use std::io::BufRead;
-use std::sync::mpsc;
-use std::net::{IpAddr, Ipv4Addr, SocketAddrV4};
 
 mod listener;
 
 // TODO: Write two programs, have them communicate over sockets.
 fn main() {
     let args = env::args().collect::<Vec<String>>();
-    let address = address(&args);
+    let address = get_address(&args);
 
     // TODO: Consider subbing this raw approach out for MQs.
-    // TODO: Move the channel set-up back into some listener class.
-    let (sender, receiver) = mpsc::channel::<u8>();
-    let join_handle = listener::listen(receiver, address);
+    let listener = listener::Listener::new(address);
 
     // TODO: Work out why the lock is required here.
     loop_until_exit(io::stdin().lock());
 
-    listener::stop_listening(sender, join_handle);
+    listener.stop_listening();
 }
 
 // Creates the address based on the port passed in on the command line.
 // Two arguments are expected, with the port in second position.
-fn address(args: &[String]) -> String {
+fn get_address(args: &[String]) -> String {
     let port = match args.len() {
         0 => panic!("Too few arguments. Usage is '<program_name> <port>."),
         1 => {
@@ -58,20 +54,18 @@ fn loop_until_exit<R: BufRead>(mut reader: R) -> String {
 
 #[cfg(test)]
 mod tests {
-    use std::net::{IpAddr, Ipv4Addr, SocketAddrV4};
-
     #[test]
     #[should_panic(expected = "Too few arguments. Usage is '<program_name> <port>.")]
     fn process_args_panics_with_zero_args() {
         let no_args = vec![];
-        crate::address(&no_args);
+        crate::get_address(&no_args);
     }
 
     #[test]
     #[should_panic(expected = "Too many arguments. Usage is '<program_name> <port>.")]
     fn process_args_panics_with_more_than_two_args() {
         let three_args = vec!["place".to_string(), "holder".to_string(), "values".to_string()];
-        crate::address(&three_args);
+        crate::get_address(&three_args);
     }
 
     #[test]
@@ -86,11 +80,11 @@ mod tests {
         let args_port_provided = vec!["program/being/run".to_string(), input_port.to_string()];
 
         // Default port is allocated if there is one argument.
-        let address_one = crate::address(&args_no_port_provided);
+        let address_one = crate::get_address(&args_no_port_provided);
         assert_eq!(default_address, address_one);
 
         // Default port is not allocated if there are two arguments.
-        let address_two = crate::address(&args_port_provided);
+        let address_two = crate::get_address(&args_port_provided);
         assert_eq!(address_with_input, address_two);
     }
 
