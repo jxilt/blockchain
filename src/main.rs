@@ -1,8 +1,13 @@
 use std::env;
-use std::io::{BufRead, stdin};
-use listener::Listener;
+use std::io::{BufRead, stdin,};
+use std::sync::mpsc::{channel, Receiver};
+use crate::handler::FlowSessionHandler;
+use crate::listener::Listener;
+use crate::persistence::InMemoryDbClient;
 
+mod handler;
 mod listener;
+mod persistence;
 
 /// Creates a listener and loops until the user breaks.
 /// 
@@ -11,10 +16,15 @@ pub fn main() {
     let args = env::args().collect::<Vec<String>>();
     let address = get_address(&args);
 
-    let listener = Listener::new(address);
+    let (db_sender, db_receiver) = channel::<String>();
+    let db_client = InMemoryDbClient::new(db_sender);
+    let handler = FlowSessionHandler::new(db_client);
 
-    // TODO: Work out why the lock is required here.
-    loop_until_user_breaks(stdin().lock());
+    let listener = Listener::new(address.to_string(), handler);
+
+    loop_until_user_types_exit(stdin().lock());
+
+    echo_all_valid_packets(db_receiver);
 
     listener.stop_listening();
 }
@@ -42,7 +52,7 @@ fn get_address(args: &[String]) -> String {
 }
 
 /// Loop until the user types 'exit'.
-fn loop_until_user_breaks<R: BufRead>(mut reader: R) -> String {
+fn loop_until_user_types_exit<R: BufRead>(mut reader: R) -> String {
     loop {
         println!("Type 'exit' to exit.");
         let mut maybe_exit = String::new();
@@ -54,54 +64,14 @@ fn loop_until_user_breaks<R: BufRead>(mut reader: R) -> String {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    #[should_panic(expected = "Too few arguments. Usage is '<program_name> <port>.")]
-    fn process_args_panics_with_zero_args() {
-        let no_args = vec![];
-        super::get_address(&no_args);
-    }
-
-    #[test]
-    #[should_panic(expected = "Too many arguments. Usage is '<program_name> <port>.")]
-    fn process_args_panics_with_more_than_two_args() {
-        let three_args = vec!["place".to_string(), "holder".to_string(), "values".to_string()];
-        super::get_address(&three_args);
-    }
-
-    #[test]
-    fn process_args_allocates_a_default_port_if_necessary() {
-        let default_port = 10005;
-        let input_port = 10006;
-        assert_ne!(input_port, default_port);
-        let default_address = format!("localhost:{}", default_port);
-        let address_with_input = format!("localhost:{}", input_port);
-
-        let args_no_port_provided = vec!["program/being/run".to_string()];
-        let args_port_provided = vec!["program/being/run".to_string(), input_port.to_string()];
-
-        // Default port is allocated if there is one argument.
-        let address_one = super::get_address(&args_no_port_provided);
-        assert_eq!(default_address, address_one);
-
-        // Default port is not allocated if there are two arguments.
-        let address_two = super::get_address(&args_port_provided);
-        assert_eq!(address_with_input, address_two);
-    }
-
-    #[test]
-    fn loop_until_exit_exits_if_exit_is_typed() {
-        let exit_line: &[u8] = b"exit\n";
-        let exit_line_with_whitespace: &[u8] = b" exit \n";
-        let exit_line_with_other_similar_lines: &[u8] = b"zexit\nexitz\nexit\n";
-
-        // For these first two tests, the loop not running forever finishing indicates that the 'exit' line was picked up.
-        super::loop_until_user_breaks(exit_line);
-        super::loop_until_user_breaks(exit_line_with_whitespace);
-
-        // Checking that it's actually the 'exit' line that's picked up, rather than the two proceeding lines with similar words.
-        let exit_two = super::loop_until_user_breaks(exit_line_with_other_similar_lines);
-        assert_eq!(exit_two, "exit");
+/// Echoes the contents of valid packets received while the listener was running.
+fn echo_all_valid_packets(db_receiver: Receiver<String>) {
+    loop {
+        let received_value = db_receiver.try_recv();
+        match received_value {
+            // TODO: Better error handling - distinguish by error.
+            Ok(contents) => println!("{}", contents),
+            Err(_) => break
+        };
     }
 }
