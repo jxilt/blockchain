@@ -4,50 +4,55 @@ use std::sync::mpsc::{channel, Sender, Receiver};
 use std::thread::{JoinHandle, spawn};
 use crate::handler::{Handler};
 
+/// A TCP listener.
 pub struct Listener {
-    kill_sender: Sender<u8>,
+    // Used to send interrupts to stop the listener.
+    interrupt_sender: Sender<u8>,
+    // Used to handle incoming connections.
     listener_handle: JoinHandle<()>
 }
 
 impl Listener {
-    /// Listens for TCP connections at the given address on a separate thread. Responds using the handler provided.
+    /// Starts listening for TCP connections at the given address on a separate thread. Handles incoming 
+    /// connections using the handler provided.
     pub fn new<T: Handler + Send + 'static>(address: String, handler: T) -> Listener {
-        let (kill_sender, kill_receiver) = channel::<u8>();
+        let (interrupt_sender, interrupt_receiver) = channel::<u8>();
 
         // We create the listener outside the thread to be sure it is set up before we continue.
-        let listener = TcpListener::bind(address).expect("Failed to bind listener to address.");
+        let tcp_listener = TcpListener::bind(address).expect("Failed to bind listener to address.");
         // We set the listener to non-blocking so that we can check for interrupts, below.
-        listener.set_nonblocking(true).expect("Failed to set listener to non-blocking.");
+        tcp_listener.set_nonblocking(true).expect("Failed to set listener to non-blocking.");
 
         // The listener needs its own thread to listen for incoming connections.
-        let listener_handle = spawn(move || listen(listener, kill_receiver, handler));
+        let listener_handle = spawn(move || Listener::handle_incoming(tcp_listener, interrupt_receiver, handler));
 
         Listener {
-            kill_sender,
+            interrupt_sender,
             listener_handle
         }
     }
 
-    // Stop listening for TCP connections.
+    /// Stops listening for TCP connections. The listener cannot be restarted.
     pub fn stop_listening(self) {
-        self.kill_sender.send(0).ok();
+        self.interrupt_sender.send(0).ok();
         self.listener_handle.join().ok();
     }
-}
 
-fn listen<T: Handler>(listener: TcpListener, kill_channel_receiver: Receiver<u8>, handler: T) {
-    for stream in listener.incoming() {
-        match stream {
-            Ok(stream) => handler.handle(stream),
-            // The listener has not received a new connection yet.
-            Err(e) if e.kind() == WouldBlock => {
-                // We check for an interrupt.
-                if kill_channel_receiver.try_recv().is_ok() {
-                    break;
-                }
-                // TODO: Consider adding a sleep here.
-            },
-            Err(_) => ()
+    /// Handles incoming TCP packets. Interrupts if an interrupt is received.
+    fn handle_incoming<T: Handler>(listener: TcpListener, interrupt_receiver: Receiver<u8>, handler: T) {
+        for stream in listener.incoming() {
+            match stream {
+                Ok(stream) => handler.handle(stream),
+                // The listener has not received a new connection yet.
+                Err(e) if e.kind() == WouldBlock => {
+                    // We check for an interrupt.
+                    if interrupt_receiver.try_recv().is_ok() {
+                        break;
+                    }
+                    // TODO: Consider adding a sleep here.
+                },
+                Err(_) => ()
+            }
         }
     }
 }
