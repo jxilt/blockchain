@@ -41,6 +41,7 @@ impl Listener {
     /// Handles incoming TCP packets. Interrupts if an interrupt is received.
     fn handle_incoming<T: Handler>(listener: TcpListener, interrupt_receiver: Receiver<u8>, handler: T) {
         for stream in listener.incoming() {
+            // TODO: Handle multiple incoming streams concurrently.
             match stream {
                 Ok(stream) => handler.handle(stream),
                 // The listener has not received a new connection yet.
