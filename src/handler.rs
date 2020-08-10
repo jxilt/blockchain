@@ -20,13 +20,13 @@ impl Handler for DummyHandler {
 }
 
 /// A handler for flow sessions.
-pub struct FlowSessionHandler {
-    // Used to write flow session packets to the database.
+pub struct RequestHandler {
+    // Used to connect to the database.
     // TODO: Modify to take generic DB client.
     db_client: InMemoryDbClient
 }
 
-impl Handler for FlowSessionHandler {
+impl Handler for RequestHandler {
     /// Checks the packet is properly formed, commits it to the database, and writes an ACK to the stream.
     fn handle(&self, stream: TcpStream) {
         // We reverse the non-blocking behaviour set at the listener level.
@@ -35,7 +35,7 @@ impl Handler for FlowSessionHandler {
         let reader = BufReader::new(&stream);
         let mut writer = BufWriter::new(&stream);
 
-        let check_packet_result = FlowSessionHandler::check_packet(reader);
+        let check_packet_result = RequestHandler::check_packet(reader);
         // TODO: See what I can do about this ugly nesting.
         match check_packet_result {
             Ok(contents) => {
@@ -51,7 +51,13 @@ impl Handler for FlowSessionHandler {
     }
 }
 
-impl FlowSessionHandler {
+impl RequestHandler {
+    pub fn new(db_client: InMemoryDbClient) -> RequestHandler {
+        RequestHandler {
+            db_client
+        }
+    }
+    
     /// Checks the packet is properly formed.
     fn check_packet<R: BufRead>(mut reader: R) -> Result<String, String> {
         let mut line = String::new();

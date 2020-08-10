@@ -15,6 +15,7 @@ pub struct Listener {
 impl Listener {
     /// Starts listening for TCP connections at the given address on a separate thread. Handles incoming 
     /// connections using the handler provided.
+    /// TODO: Separate this into a 'new' and a 'listen' method.
     pub fn new<T: Handler + Send + 'static>(address: String, handler: T) -> Listener {
         let (interrupt_sender, interrupt_receiver) = channel::<u8>();
 

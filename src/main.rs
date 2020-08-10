@@ -1,7 +1,7 @@
 use std::env;
-use std::io::{BufRead, stdin,};
+use std::io::{BufRead, stdin};
 use std::sync::mpsc::channel;
-use crate::handler::FlowSessionHandler;
+use crate::handler::RequestHandler;
 use crate::listener::Listener;
 use crate::persistence::InMemoryDbClient;
 
@@ -9,25 +9,25 @@ mod handler;
 mod listener;
 mod persistence;
 
-/// Listens for incoming flow packets until the user exits the program.
-/// Expects two env arguments, with the port in second position.
+/// Listens for incoming packets until the user exits the program.
+/// Expects two env arguments: <program name, port>.
 pub fn main() {
     let args = env::args().collect::<Vec<String>>();
-    let address = get_address(&args);
+    let address = check_args_and_get_address(&args);
 
     let (db_sender, _) = channel::<String>();
     let db_client = InMemoryDbClient::new(db_sender);
-    let handler = FlowSessionHandler { db_client };
+    let handler = RequestHandler::new(db_client);
 
     let listener = Listener::new(address.to_string(), handler);
 
-    loop_until_exit_is_read(stdin().lock());
+    loop_until_exit_requested(stdin().lock());
 
     listener.stop_listening();
 }
 
 /// Returns a localhost address based on the port provided. Expects arguments of the form "<program_name> <port>".
-fn get_address(args: &[String]) -> String {
+fn check_args_and_get_address(args: &[String]) -> String {
     let port = match args.len() {
         0 => panic!("Too few arguments. Usage is '<program_name> <port>'."),
         1 => {
@@ -47,7 +47,7 @@ fn get_address(args: &[String]) -> String {
 }
 
 /// Loop until the reader returns the line 'exit' (plus optional whitespace).
-fn loop_until_exit_is_read<R: BufRead>(mut reader: R) -> String {
+fn loop_until_exit_requested<R: BufRead>(mut reader: R) -> String {
     loop {
         println!("Type 'exit' to exit.");
         let mut maybe_exit = String::new();
