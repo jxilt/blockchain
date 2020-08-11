@@ -19,7 +19,8 @@ pub fn main() {
     let db_client = InMemoryDbClient::new(db_sender);
     let handler = RequestHandler::new(db_client);
 
-    let listener = Listener::new(address.to_string(), handler);
+    let listener = Listener::new(handler);
+    listener.listen(address.to_string());
 
     loop_until_exit_requested(stdin().lock());
 
