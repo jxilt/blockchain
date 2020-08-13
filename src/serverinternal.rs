@@ -6,20 +6,21 @@ use std::thread::{spawn};
 
 /// A TCP listener.
 pub struct ServerInternal {
-    // Used to send an interrupt to the listener.
+    // Used to interrupt the listening thread.
     interrupt_sender: Option<Sender<u8>>
 }
 
 impl ServerInternal {
-    /// Starts listening for TCP connections at the given address on a separate thread. Handles incoming 
-    /// connections using the handler provided.
     pub fn new() -> ServerInternal {
         ServerInternal {
             interrupt_sender: None
         }
     }
 
-    pub fn listen <T: Handler + Send + 'static> (&mut self, address: String, handler: T) {
+    /// Sets up a channel between the main thread and the TCP listening thread. Starts listening 
+    /// for TCP connections at the given address on a separate thread. Handles incoming 
+    /// connections using the handler provided.
+    pub fn listen <T: Handler + Send + 'static> (&mut self, address: &String, handler: T) {
         // TODO: Check if already listening. If so, abort.
         let interrupt_receiver = self.create_channel();
         ServerInternal::handle_incoming(address, interrupt_receiver, handler);
@@ -32,29 +33,29 @@ impl ServerInternal {
                 sender.send(0).expect("Failed to send interrupt listener.");
                 self.interrupt_sender = None;
             },
-            // We are not currently listening. Take no action.
             None => ()
         }
     }
 
+    /// Sets up a channel between the main thread and the TCP listening thread.
     fn create_channel(&mut self) -> Receiver<u8> {
         let (interrupt_sender, interrupt_receiver) = channel::<u8>();
         self.interrupt_sender = Some(interrupt_sender);
         return interrupt_receiver;
     }
 
-    fn handle_incoming <T: Handler + Send + 'static> (address: String, interrupt_receiver: Receiver<u8>, handler: T) {        
+    /// Starts listening for TCP connections at the given address on a separate thread. Handles 
+    /// incoming connections using the handler provided.
+    fn handle_incoming <T: Handler + Send + 'static> (address: &String, interrupt_receiver: Receiver<u8>, handler: T) {        
+        let tcp_listener = TcpListener::bind(address).expect("Failed to bind listener to address.");
+        // We set the listener to non-blocking so that we can check for interrupts, below.
+        tcp_listener.set_nonblocking(true).expect("Failed to set listener to non-blocking.");
+        
         spawn(move || {
-            // We create the listener outside the thread to be sure it is set up before we continue.
-            let tcp_listener = TcpListener::bind(address).expect("Failed to bind listener to address.");
-            // We set the listener to non-blocking so that we can check for interrupts, below.
-            tcp_listener.set_nonblocking(true).expect("Failed to set listener to non-blocking.");
-
             for stream in tcp_listener.incoming() {
                 match stream {
                     Ok(incoming) => {
                         handler.handle(incoming);
-                        ()
                     },
                     // The listener has not received a new connection yet.
                     Err(e) if e.kind() == WouldBlock => {
@@ -64,6 +65,7 @@ impl ServerInternal {
                         }
                         // TODO: Consider adding a sleep here.
                     },
+                    // TODO: Handle error.
                     Err(_) => ()
                 }
             }
@@ -77,9 +79,18 @@ mod tests {
     use std::io::{BufReader, BufWriter, BufRead, Write};
     use std::sync::atomic::{AtomicU16, Ordering};
     use crate::handler::DummyHandler;
+    use crate::serverinternal::ServerInternal;
 
     // Used to allocate different ports for the listeners across tests.
     static PORT: AtomicU16 = AtomicU16::new(10000);
+
+    fn start_server(address: String) -> ServerInternal {
+        let mut server = ServerInternal::new();
+        let handler = DummyHandler {};
+        server.listen(&address, handler);
+
+        return server;
+    }
 
     fn write_to_listener(stream: &TcpStream, packet_to_write: &[u8]) {
         let mut buf_writer = BufWriter::new(stream);
@@ -96,28 +107,25 @@ mod tests {
 
     fn get_address() -> String {
         let old_port = PORT.fetch_add(1, Ordering::Relaxed);
-        println!("{}", old_port);
         return format!("localhost:{}", old_port.to_string());
     }
 
     #[test]
     fn listener_allows_connections() {
         let address = get_address();
-        let handler = DummyHandler {};
-        let listener = crate::ServerInternal::new(address.to_string(), handler);
+        let mut server = start_server(address.to_string());
 
         TcpStream::connect(address.to_string()).unwrap();
 
-        listener.stop_listening();
+        server.stop_listening();
     }
 
     #[test]
-    fn listener_can_be_interrupted() {
+    fn listener_can_be_stopped() {
         let address = get_address();
-        let handler = DummyHandler {};
-        let listener = crate::ServerInternal::new(address.to_string(), handler);
+        let mut server = start_server(address.to_string());
 
-        listener.stop_listening();
+        server.stop_listening();
 
         TcpStream::connect(address.to_string()).unwrap_err();
     }
@@ -125,8 +133,7 @@ mod tests {
     #[test]
     fn listener_responds_to_packets() {
         let address = get_address();
-        let handler = DummyHandler {};
-        let listener = crate::ServerInternal::new(address.to_string(), handler);
+        let mut server = start_server(address.to_string());
 
         let stream = TcpStream::connect(address).expect("Failed to connect to server.");
         write_to_listener(&stream, b"\n");
@@ -134,14 +141,13 @@ mod tests {
 
         assert_eq!(response, "DUMMY\n");
 
-        listener.stop_listening();
+        server.stop_listening();
     }
 
     #[test]
     fn listener_can_handle_concurrent_connections() {
         let address = get_address();
-        let handler = DummyHandler {};
-        let listener = crate::ServerInternal::new(address.to_string(), handler);
+        let mut server = start_server(address.to_string());
 
         // Interleaved connections - write to both, then read from both.
         let first_stream = TcpStream::connect(address.to_string()).expect("Failed to connect to server.");
@@ -165,6 +171,6 @@ mod tests {
         assert_eq!("DUMMY\n".to_string(), first_response);
         assert_eq!("DUMMY\n".to_string(), second_response);
 
-        listener.stop_listening();
+        server.stop_listening();
     }
 }

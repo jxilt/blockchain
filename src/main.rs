@@ -14,7 +14,7 @@ pub fn main() {
     let address = extract_address_from_args(&args);
 
     let mut server = Server::new();
-    server.listen(address);
+    server.listen(&address);
     loop_until_exit_requested(stdin().lock());
     server.stop_listening();
 }
