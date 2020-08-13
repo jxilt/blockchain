@@ -16,21 +16,21 @@ impl DbClient for DummyDbClient {
 }
 
 pub struct InMemoryDbClient {
-    db_sender: Sender<String>
+    // db_sender: Sender<String>
 }
 
 impl DbClient for InMemoryDbClient {
     fn commit(&self, data: String) -> Result<(), String> {
         // TODO: Check message was received correctly.
-        self.db_sender.send(data).expect("Receiver has been deallocated.");
+        // self.db_sender.send(data).expect("Receiver has been deallocated.");
         return Ok(());
     }
 }
 
 impl InMemoryDbClient {
-    pub fn new(db_sender: Sender<String>) -> InMemoryDbClient {
+    pub fn new() -> InMemoryDbClient {
         InMemoryDbClient {
-            db_sender
+            // db_sender
         }
     }
 }

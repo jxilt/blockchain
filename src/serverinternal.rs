@@ -1,68 +1,73 @@
 use std::io::{ErrorKind::WouldBlock};
 use std::net::{TcpListener};
 use std::sync::mpsc::{channel, Sender, Receiver};
-use std::thread::{JoinHandle, spawn};
 use crate::handler::{Handler};
+use std::thread::{spawn};
 
 /// A TCP listener.
-pub struct Listener<T: Handler + Send + 'static> {
-    // Used to send interrupts to stop the listener.
-    interrupt_sender: Option<Sender<u8>>,
-    // Used to handle incoming connections.
-    handler: T,
-    // TODO: Document
-    join_handle: Option<JoinHandle<()>>
+pub struct ServerInternal {
+    // Used to send an interrupt to the listener.
+    interrupt_sender: Option<Sender<u8>>
 }
 
-impl <T: Handler + Send + 'static> Listener<T> {
+impl ServerInternal {
     /// Starts listening for TCP connections at the given address on a separate thread. Handles incoming 
     /// connections using the handler provided.
-    pub fn new(handler: T) -> Listener<T> {
-        Listener {
-            interrupt_sender: None,
-            handler: handler,
-            join_handle: None
+    pub fn new() -> ServerInternal {
+        ServerInternal {
+            interrupt_sender: None
         }
     }
 
-    pub fn listen(self, address: String) {
+    pub fn listen <T: Handler + Send + 'static> (&mut self, address: String, handler: T) {
+        // TODO: Check if already listening. If so, abort.
+        let interrupt_receiver = self.create_channel();
+        ServerInternal::handle_incoming(address, interrupt_receiver, handler);
+    }
+
+    /// Stops listening for TCP connections.
+    pub fn stop_listening(&mut self) {
+        match &self.interrupt_sender {
+            Some(sender) => {
+                sender.send(0).expect("Failed to send interrupt listener.");
+                self.interrupt_sender = None;
+            },
+            // We are not currently listening. Take no action.
+            None => ()
+        }
+    }
+
+    fn create_channel(&mut self) -> Receiver<u8> {
         let (interrupt_sender, interrupt_receiver) = channel::<u8>();
         self.interrupt_sender = Some(interrupt_sender);
-
-        // We create the listener outside the thread to be sure it is set up before we continue.
-        let tcp_listener = TcpListener::bind(address).expect("Failed to bind listener to address.");
-        // We set the listener to non-blocking so that we can check for interrupts, below.
-        tcp_listener.set_nonblocking(true).expect("Failed to set listener to non-blocking.");
-
-        // The listener needs its own thread to listen for incoming connections.
-        let listener_handle = spawn(move || Listener::handle_incoming(tcp_listener, interrupt_receiver, self.handler));
-
-        self.join_handle = Some(listener_handle);
+        return interrupt_receiver;
     }
 
-    /// Stops listening for TCP connections. The listener cannot be restarted.
-    pub fn stop_listening(self) {
-        self.interrupt_sender.send(0).ok();
-        self.listener_handle.join().ok();
-    }
+    fn handle_incoming <T: Handler + Send + 'static> (address: String, interrupt_receiver: Receiver<u8>, handler: T) {        
+        spawn(move || {
+            // We create the listener outside the thread to be sure it is set up before we continue.
+            let tcp_listener = TcpListener::bind(address).expect("Failed to bind listener to address.");
+            // We set the listener to non-blocking so that we can check for interrupts, below.
+            tcp_listener.set_nonblocking(true).expect("Failed to set listener to non-blocking.");
 
-    /// Handles incoming TCP packets. Interrupts if an interrupt is received.
-    fn handle_incoming(listener: TcpListener, interrupt_receiver: Receiver<u8>, handler: T) {
-        for stream in listener.incoming() {
-            // TODO: Handle multiple incoming streams concurrently.
-            match stream {
-                Ok(stream) => handler.handle(stream),
-                // The listener has not received a new connection yet.
-                Err(e) if e.kind() == WouldBlock => {
-                    // We check for an interrupt.
-                    if interrupt_receiver.try_recv().is_ok() {
-                        break;
-                    }
-                    // TODO: Consider adding a sleep here.
-                },
-                Err(_) => ()
+            for stream in tcp_listener.incoming() {
+                match stream {
+                    Ok(incoming) => {
+                        handler.handle(incoming);
+                        ()
+                    },
+                    // The listener has not received a new connection yet.
+                    Err(e) if e.kind() == WouldBlock => {
+                        // We check for an interrupt.
+                        if interrupt_receiver.try_recv().is_ok() {
+                            break;
+                        }
+                        // TODO: Consider adding a sleep here.
+                    },
+                    Err(_) => ()
+                }
             }
-        }
+        });
     }
 }
 
@@ -99,7 +104,7 @@ mod tests {
     fn listener_allows_connections() {
         let address = get_address();
         let handler = DummyHandler {};
-        let listener = crate::Listener::new(address.to_string(), handler);
+        let listener = crate::ServerInternal::new(address.to_string(), handler);
 
         TcpStream::connect(address.to_string()).unwrap();
 
@@ -110,7 +115,7 @@ mod tests {
     fn listener_can_be_interrupted() {
         let address = get_address();
         let handler = DummyHandler {};
-        let listener = crate::Listener::new(address.to_string(), handler);
+        let listener = crate::ServerInternal::new(address.to_string(), handler);
 
         listener.stop_listening();
 
@@ -121,7 +126,7 @@ mod tests {
     fn listener_responds_to_packets() {
         let address = get_address();
         let handler = DummyHandler {};
-        let listener = crate::Listener::new(address.to_string(), handler);
+        let listener = crate::ServerInternal::new(address.to_string(), handler);
 
         let stream = TcpStream::connect(address).expect("Failed to connect to server.");
         write_to_listener(&stream, b"\n");
@@ -136,7 +141,7 @@ mod tests {
     fn listener_can_handle_concurrent_connections() {
         let address = get_address();
         let handler = DummyHandler {};
-        let listener = crate::Listener::new(address.to_string(), handler);
+        let listener = crate::ServerInternal::new(address.to_string(), handler);
 
         // Interleaved connections - write to both, then read from both.
         let first_stream = TcpStream::connect(address.to_string()).expect("Failed to connect to server.");
