@@ -29,14 +29,11 @@ pub struct RequestHandler {
 impl Handler for RequestHandler {
     /// Checks the packet is properly formed, commits it to the database, and writes an ACK to the stream.
     fn handle(&self, stream: TcpStream) {
-        // We reverse the non-blocking behaviour set at the listener level.
-        stream.set_nonblocking(false).expect("Failed to set stream to blocking.");
-
         let reader = BufReader::new(&stream);
         let mut writer = BufWriter::new(&stream);
 
         let check_packet_result = RequestHandler::check_packet(reader);
-        // TODO: See what I can do about this ugly nesting.
+
         match check_packet_result {
             Ok(contents) => {
                 let commit_result = self.db_client.commit(contents);
@@ -52,6 +49,7 @@ impl Handler for RequestHandler {
 }
 
 impl RequestHandler {
+    // TODO: Generify to take any client type.
     pub fn new(db_client: InMemoryDbClient) -> RequestHandler {
         RequestHandler {
             db_client

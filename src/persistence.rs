@@ -1,5 +1,3 @@
-use std::sync::mpsc::Sender;
-
 pub trait DbClient {
     // TODO: Modify this to take values other than strings.
     fn commit(&self, data: String) -> Result<(), String>;
@@ -15,22 +13,19 @@ impl DbClient for DummyDbClient {
     }
 }
 
-pub struct InMemoryDbClient {
-    // db_sender: Sender<String>
-}
-
-impl DbClient for InMemoryDbClient {
-    fn commit(&self, data: String) -> Result<(), String> {
-        // TODO: Check message was received correctly.
-        // self.db_sender.send(data).expect("Receiver has been deallocated.");
-        return Ok(());
-    }
-}
+pub struct InMemoryDbClient {}
 
 impl InMemoryDbClient {
     pub fn new() -> InMemoryDbClient {
         InMemoryDbClient {
-            // db_sender
+
         }
+    }
+}
+
+impl DbClient for InMemoryDbClient {
+    fn commit(&self, data: String) -> Result<(), String> {
+        // TODO: Store data.
+        return Ok(());
     }
 }

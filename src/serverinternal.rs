@@ -55,6 +55,9 @@ impl ServerInternal {
             for stream in tcp_listener.incoming() {
                 match stream {
                     Ok(incoming) => {
+                        // We reverse the non-blocking behaviour set at the listener level.
+                        incoming.set_nonblocking(false).expect("Failed to set stream to blocking.");
+                        
                         handler.handle(incoming);
                     },
                     // The listener has not received a new connection yet.
@@ -84,10 +87,10 @@ mod tests {
     // Used to allocate different ports for the listeners across tests.
     static PORT: AtomicU16 = AtomicU16::new(10000);
 
-    fn start_server(address: String) -> ServerInternal {
+    fn start_server(address: &String) -> ServerInternal {
         let mut server = ServerInternal::new();
         let handler = DummyHandler {};
-        server.listen(&address, handler);
+        server.listen(address, handler);
 
         return server;
     }
@@ -107,15 +110,15 @@ mod tests {
 
     fn get_address() -> String {
         let old_port = PORT.fetch_add(1, Ordering::Relaxed);
-        return format!("localhost:{}", old_port.to_string());
+        return format!("localhost:{}", old_port);
     }
 
     #[test]
     fn listener_allows_connections() {
         let address = get_address();
-        let mut server = start_server(address.to_string());
+        let mut server = start_server(&address);
 
-        TcpStream::connect(address.to_string()).unwrap();
+        TcpStream::connect(address).unwrap();
 
         server.stop_listening();
     }
@@ -123,17 +126,17 @@ mod tests {
     #[test]
     fn listener_can_be_stopped() {
         let address = get_address();
-        let mut server = start_server(address.to_string());
+        let mut server = start_server(&address);
 
         server.stop_listening();
 
-        TcpStream::connect(address.to_string()).unwrap_err();
+        TcpStream::connect(address).unwrap_err();
     }
 
     #[test]
     fn listener_responds_to_packets() {
         let address = get_address();
-        let mut server = start_server(address.to_string());
+        let mut server = start_server(&address);
 
         let stream = TcpStream::connect(address).expect("Failed to connect to server.");
         write_to_listener(&stream, b"\n");
@@ -147,7 +150,7 @@ mod tests {
     #[test]
     fn listener_can_handle_concurrent_connections() {
         let address = get_address();
-        let mut server = start_server(address.to_string());
+        let mut server = start_server(&address);
 
         // Interleaved connections - write to both, then read from both.
         let first_stream = TcpStream::connect(address.to_string()).expect("Failed to connect to server.");
@@ -157,8 +160,8 @@ mod tests {
         let first_response = get_response(&first_stream);
         let second_response = get_response(&second_stream);
 
-        assert_eq!("DUMMY\n".to_string(), first_response);
-        assert_eq!("DUMMY\n".to_string(), second_response);
+        assert_eq!("DUMMY\n", first_response);
+        assert_eq!("DUMMY\n", second_response);
 
         // Nested connections - write to first, write then read from the second, then read from the first.
         let first_stream = TcpStream::connect(address.to_string()).expect("Failed to connect to server.");
@@ -168,8 +171,8 @@ mod tests {
         let second_response = get_response(&second_stream);
         let first_response = get_response(&first_stream);
 
-        assert_eq!("DUMMY\n".to_string(), first_response);
-        assert_eq!("DUMMY\n".to_string(), second_response);
+        assert_eq!("DUMMY\n", first_response);
+        assert_eq!("DUMMY\n", second_response);
 
         server.stop_listening();
     }
