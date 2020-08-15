@@ -1,12 +1,11 @@
-use std::io::{Read, BufReader, BufWriter, Write};
+use std::io::{Read, Write};
 use std::str::from_utf8;
-use std::net::TcpStream;
 use crate::persistence::{DbClient};
 
 /// A handler for TCP streams.
 pub trait Handler {
     // Handles incoming connections.
-    fn handle(&self, stream: TcpStream);
+    fn handle <R: Read, W: Write> (&self, reader: R, writer: W);
 }
 
 /// A dummy handler for testing.
@@ -14,8 +13,7 @@ pub struct DummyHandler {}
 
 impl Handler for DummyHandler {
     /// Writes "DUMMY" to every stream.
-    fn handle(&self, stream: TcpStream) {
-        let mut writer = BufWriter::new(&stream);
+    fn handle <R: Read, W: Write> (&self, _: R, mut writer: W) {
         writer.write(b"DUMMY\n").expect("Writing failed.");
     }
 }
@@ -28,11 +26,9 @@ pub struct HttpHandler <T: DbClient> {
 
 impl <T: DbClient> Handler for HttpHandler<T> {
     /// Checks the packet is properly formed, commits it to the database, and writes an ACK to the stream.
-    fn handle(&self, stream: TcpStream) {
-        let reader = BufReader::new(&stream);
+    fn handle <R: Read, W: Write> (&self, reader: R, writer: W) {
         let http_request = HttpHandler::<T>::read_http_request(reader);
 
-        let writer = BufWriter::new(&stream);
         match http_request {
             Ok(contents) => {
                 let commit_result = self.db_client.commit("placeholder".to_string());
@@ -67,14 +63,14 @@ impl <T: DbClient> HttpHandler<T> {
             match bytes.next() {
                 // We've reached the end of the current token.
                 Some(Ok(b' ')) => {
-                    let token_string = from_utf8(&token).expect("Token was invalid UTF-8.").to_string();
+                    let token_string = from_utf8(&token).expect("Request contained invalid UTF-8.").to_string();
                     tokens.push(token_string);
                     token.clear();
                 },
 
                 // We've reached the end of the line.
                 Some(Ok(b'\r')) => {
-                    let token_string = from_utf8(&token).expect("Token was invalid UTF-8.").to_string();
+                    let token_string = from_utf8(&token).expect("Request contained invalid UTF-8.").to_string();
                     tokens.push(token_string);
 
                     // We check that the next byte is a line-feed.
@@ -125,4 +121,32 @@ pub struct HttpRequest {
     http_version: String
 }
 
-// TODO: Add tests.
+#[cfg(test)]
+mod tests {
+    use std::io::{BufReader, BufWriter};
+    use std::str::from_utf8;
+    use crate::persistence::{DummyDbClient};
+    use crate::handler::{Handler, HttpHandler};
+
+    fn handle(request: String) -> String {
+        let mut response = Vec::<u8>::new();
+
+        let db_client = DummyDbClient {};
+        let handler = HttpHandler::new(db_client);
+        
+        let reader = BufReader::new(request.as_bytes());
+        let writer = BufWriter::new(&mut response);
+
+        handler.handle(reader, writer);
+
+        return from_utf8(&response).expect("Response was invalid UTF-8.").to_string();
+    }
+
+    #[test]
+    fn handler_accepts_valid_http_requests() {
+        let valid_request = "GET / HTTP/1.1\r\n";
+        let response = handle(valid_request.to_string());
+
+        assert_eq!(response, "HTTP/1.1 200 OK\r\n");
+    }
+}

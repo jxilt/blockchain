@@ -3,8 +3,9 @@ use std::net::{TcpListener};
 use std::sync::mpsc::{channel, Sender, Receiver};
 use crate::handler::{Handler};
 use std::thread::{spawn};
+use std::io::{BufReader, BufWriter};
 
-/// A TCP listener.
+/// A TCP server.
 pub struct ServerInternal {
     // Used to interrupt the listening thread.
     interrupt_sender: Option<Sender<u8>>
@@ -30,14 +31,14 @@ impl ServerInternal {
     pub fn stop_listening(&mut self) {
         match &self.interrupt_sender {
             Some(sender) => {
-                sender.send(0).expect("Failed to send interrupt listener.");
+                sender.send(0).expect("Failed to send interrupt request-handling thread.");
                 self.interrupt_sender = None;
             },
             None => ()
         }
     }
 
-    /// Sets up a channel between the main thread and the TCP listening thread.
+    /// Sets up a channel between the main thread and the request-handling thread.
     fn create_channel(&mut self) -> Receiver<u8> {
         let (interrupt_sender, interrupt_receiver) = channel::<u8>();
         self.interrupt_sender = Some(interrupt_sender);
@@ -52,13 +53,15 @@ impl ServerInternal {
         tcp_listener.set_nonblocking(true).expect("Failed to set listener to non-blocking.");
         
         spawn(move || {
-            for stream in tcp_listener.incoming() {
-                match stream {
-                    Ok(incoming) => {
+            for maybe_stream in tcp_listener.incoming() {
+                match maybe_stream {
+                    Ok(stream) => {
                         // We reverse the non-blocking behaviour set at the listener level.
-                        incoming.set_nonblocking(false).expect("Failed to set stream to blocking.");
+                        stream.set_nonblocking(false).expect("Failed to set stream to blocking.");
                         
-                        handler.handle(incoming);
+                        let reader = BufReader::new(&stream);
+                        let writer = BufWriter::new(&stream);
+                        handler.handle(reader, writer);
                     },
                     // The listener has not received a new connection yet.
                     Err(e) if e.kind() == WouldBlock => {
@@ -95,7 +98,7 @@ mod tests {
         return server;
     }
 
-    fn write_to_listener(stream: &TcpStream, packet_to_write: &[u8]) {
+    fn write_to_stream(stream: &TcpStream, packet_to_write: &[u8]) {
         let mut buf_writer = BufWriter::new(stream);
         buf_writer.write(packet_to_write).expect("Failed to write packet.");
         buf_writer.flush().expect("Failed to flush buffer.");
@@ -114,7 +117,7 @@ mod tests {
     }
 
     #[test]
-    fn listener_allows_connections() {
+    fn server_allows_connections() {
         let address = get_address();
         let mut server = start_server(&address);
 
@@ -124,7 +127,7 @@ mod tests {
     }
 
     #[test]
-    fn listener_can_be_stopped() {
+    fn server_can_be_stopped() {
         let address = get_address();
         let mut server = start_server(&address);
 
@@ -134,12 +137,12 @@ mod tests {
     }
 
     #[test]
-    fn listener_responds_to_packets() {
+    fn server_responds_to_packets() {
         let address = get_address();
         let mut server = start_server(&address);
 
         let stream = TcpStream::connect(address).expect("Failed to connect to server.");
-        write_to_listener(&stream, b"\n");
+        write_to_stream(&stream, b"\n");
         let response = get_response(&stream);
 
         assert_eq!(response, "DUMMY\n");
@@ -148,15 +151,15 @@ mod tests {
     }
 
     #[test]
-    fn listener_can_handle_concurrent_connections() {
+    fn server_can_handle_concurrent_connections() {
         let address = get_address();
         let mut server = start_server(&address);
 
         // Interleaved connections - write to both, then read from both.
         let first_stream = TcpStream::connect(address.to_string()).expect("Failed to connect to server.");
         let second_stream = TcpStream::connect(address.to_string()).expect("Failed to connect to server.");
-        write_to_listener(&first_stream, b"\n");
-        write_to_listener(&second_stream, b"\n");
+        write_to_stream(&first_stream, b"\n");
+        write_to_stream(&second_stream, b"\n");
         let first_response = get_response(&first_stream);
         let second_response = get_response(&second_stream);
 
@@ -166,8 +169,8 @@ mod tests {
         // Nested connections - write to first, write then read from the second, then read from the first.
         let first_stream = TcpStream::connect(address.to_string()).expect("Failed to connect to server.");
         let second_stream = TcpStream::connect(address.to_string()).expect("Failed to connect to server.");
-        write_to_listener(&first_stream, b"\n");
-        write_to_listener(&second_stream, b"\n");
+        write_to_stream(&first_stream, b"\n");
+        write_to_stream(&second_stream, b"\n");
         let second_response = get_response(&second_stream);
         let first_response = get_response(&first_stream);
 
