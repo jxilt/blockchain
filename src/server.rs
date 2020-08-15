@@ -1,6 +1,6 @@
 use crate::serverinternal::{ServerInternal};
 use crate::persistence::{InMemoryDbClient};
-use crate::handler::{RequestHandler};
+use crate::handler::{HttpHandler};
 
 /// A TCP listener.
 pub struct Server {
@@ -24,7 +24,7 @@ impl Server {
         // We create a fresh handler for each call to `listen`. This is because `listen` spawns a 
         // new thread that must own the handler.
         let db_client = InMemoryDbClient::new();
-        let handler = RequestHandler::new(db_client);
+        let handler = HttpHandler::new(db_client);
 
         self.server_internal.listen(address, handler);
     }
