@@ -149,4 +149,24 @@ mod tests {
 
         assert_eq!(response, "HTTP/1.1 200 OK\r\n");
     }
+
+    #[test]
+    fn handler_rejects_invalid_http_requests() {
+        let invalid_requests = [
+            "\r\n", // Too few items.
+            "GET\r\n", // Too few items.
+            "GET /\r\n", // Too few items.
+            "GET / HTTP/1.1 EXTRA\r\n", // Too many items.
+            "GET / HTTP/1.1", // Missing CRLF.
+            "GET / HTTP/1.1 EXTRA\r", // Missing LF.
+            "GET / HTTP/1.1\n", // Missing CR.
+            "GET / HTTP/1.1 EXTRA\n\r" // CR and LF in wrong order.
+        ];
+
+        for request in &invalid_requests {
+            let response = handle(request.to_string());
+
+            assert_eq!(response, "HTTP/1.1 500 INTERNAL SERVER ERROR\r\n");
+        }
+    }
 }
