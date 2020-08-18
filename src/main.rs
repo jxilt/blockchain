@@ -1,4 +1,5 @@
 use std::env;
+use std::env::Args;
 use std::io::{BufRead, stdin};
 use crate::server::Server;
 
@@ -10,8 +11,9 @@ mod persistence;
 /// Listens for incoming packets until the user exits the program.
 /// Expects two env arguments: <program name, port>.
 pub fn main() {
-    let args = env::args().collect::<Vec<String>>();
-    let address = extract_address_from_args(&args);
+    let args = env::args();
+    let port = extract_port_from_args(args);
+    let address = format!("localhost:{}", port);
 
     let mut server = Server::new();
     server.listen(&address);
@@ -19,25 +21,32 @@ pub fn main() {
     server.stop_listening();
 }
 
-/// Returns a localhost address based on the port provided.
-/// Expects argument vector of the form "<program_name> <port>".
-fn extract_address_from_args(args: &[String]) -> String {
-    let port = match args.len() {
-        0 => panic!("Too few arguments. Usage is '<program_name> <port>'."),
-        1 => {
-            let default_port = "10005";
-            println!("No port provided. Using default of '{}'.", default_port);
-            default_port
-        },
-        2 => {
-            let provided_port = &args[1];
-            println!("Using provided port '{}'.", provided_port);
-            provided_port
-        },
-        _ => panic!("Too many arguments. Usage is '<program_name> <port>.")
-    };
+/// Returns a localhost address based on the port provided using the `-p` flag.
+fn extract_port_from_args(mut args: Args) -> String {
+    loop {
+        match args.next() {
+            Some(maybe_port_flag) => {
+                if maybe_port_flag == "-p" {
+                    break;
+                } else {
+                    continue;
+                }
+            },
+            None => {
+                let default_port = "10005";
+                println!("No port provided. Using default of '{}'.", default_port);
+                return default_port.to_string();
+            }
+        }
+    }
 
-    return format!("localhost:{}", port);
+    let passed_port = args.next().expect("Flag \"-p\" used but no port provided.");
+
+    let port_is_numeric = passed_port.parse::<i32>().is_ok();
+    assert!(port_is_numeric, "Flag \"-p\" used but port had incorrect format: {}.", passed_port);
+
+    println!("Using provided port of {}.", passed_port);
+    return passed_port;
 }
 
 /// Loop until the reader reads the word 'exit' (plus optional whitespace).
