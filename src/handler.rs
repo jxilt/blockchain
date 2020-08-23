@@ -111,7 +111,10 @@ impl <T: DbClient> HttpHandler<T> {
         let content = "<html>\r\n<body>\r\n<h1>Hello, World!</h1>\r\n</body>\r\n</html>";
         
         let content_length = content.len();
-        let header = format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nContent-Type: text/html\r\nConnection: Closed\r\n\r\n", content_length.to_string());
+        let header = format!("HTTP/1.1 200 OK\r\n\
+            Content-Length: {}\r\n\
+            Content-Type: text/html\r\n\
+            Connection: Closed\r\n\r\n", content_length.to_string());
 
         writer.write(header.as_bytes()).expect("Failed to write HTTP response.");
         writer.write(content.as_bytes()).expect("Failed to write HTTP response.");
