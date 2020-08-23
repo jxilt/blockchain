@@ -107,7 +107,14 @@ impl <T: DbClient> HttpHandler<T> {
     }
 
     fn write_http_ok_response<W: Write>(mut writer: W) {
-        writer.write(b"HTTP/1.1 200 OK\r\n").expect("Failed to write HTTP response.");
+        // TODO: Store this content in a file.
+        let content = "<html>\r\n<body>\r\n<h1>Hello, World!</h1>\r\n</body>\r\n</html>";
+        
+        let content_length = content.len();
+        let header = format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nContent-Type: text/html\r\nConnection: Closed\r\n\r\n", content_length.to_string());
+
+        writer.write(header.as_bytes()).expect("Failed to write HTTP response.");
+        writer.write(content.as_bytes()).expect("Failed to write HTTP response.");
     }
 
     fn write_http_err_response<W: Write>(mut writer: W) {
@@ -144,11 +151,14 @@ mod tests {
 
     #[test]
     fn handler_accepts_valid_http_requests() {
+        // TODO: Update to new response.
         let valid_request = "GET / HTTP/1.1\r\n";
         let response = handle(valid_request.to_string());
 
         assert_eq!(response, "HTTP/1.1 200 OK\r\n");
     }
+
+    // TODO: Test of proper content length.
 
     #[test]
     fn handler_rejects_invalid_http_requests() {
