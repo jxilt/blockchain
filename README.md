@@ -2,6 +2,15 @@ A webserver that serves "Hello, World!" on the root.
 
 # Usage
 
-The server takes a single command-line flag, `-p`, specifying the port to be used. For example:
+## With Cargo
 
-    cargo run blockchain -p 10006
+The webserver takes a single command-line flag, `-p`, specifying the port to serve on. For example:
+
+    cargo run blockchain -p <port_number>
+
+## With Docker
+
+The webserver can run using Docker, serving on port `10005`. For example:
+
+    docker build .
+    docker run --publish 10005:10005 --detach <image_name>
