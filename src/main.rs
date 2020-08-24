@@ -13,7 +13,7 @@ mod persistence;
 pub fn main() {
     let args = env::args();
     let port = extract_port_from_args(args);
-    let address = format!("localhost:{}", port);
+    let address = format!("0.0.0.0:{}", port);
 
     let mut server = Server::new();
     server.listen(&address);
