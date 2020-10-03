@@ -19,7 +19,7 @@ impl Server {
 
     /// Starts listening for TCP connections at the given address on a separate thread. Handles 
     /// incoming connections.
-    /// TODO: Document throws an exception if already listening.
+    /// TODO: Document that throws an exception if already listening.
     pub fn listen(&mut self, address: &String) {
         // We create a fresh handler for each call to `listen`. This is because `listen` spawns a 
         // new thread that must own the handler.
