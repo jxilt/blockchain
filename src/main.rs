@@ -26,7 +26,7 @@ fn extract_port_from_args(mut args: Args) -> String {
     loop {
         match args.next() {
             Some(maybe_port_flag) => {
-                if maybe_port_flag == "-p" {
+                if maybe_port_flag == "-p".to_string() {
                     break;
                 } else {
                     continue;
@@ -40,13 +40,13 @@ fn extract_port_from_args(mut args: Args) -> String {
         }
     }
 
-    let passed_port = args.next().expect("Flag \"-p\" used but no port provided.");
+    let provided_port = args.next().expect("Flag \"-p\" used but no port provided.");
 
-    let port_is_numeric = passed_port.parse::<i32>().is_ok();
-    assert!(port_is_numeric, "Flag \"-p\" used but port had incorrect format: {}.", passed_port);
+    let port_is_numeric = provided_port.parse::<i32>().is_ok();
+    assert!(port_is_numeric, "Flag \"-p\" used but port had incorrect format: {}.", provided_port);
 
-    println!("Using provided port of {}.", passed_port);
-    return passed_port;
+    println!("Using provided port of {}.", provided_port);
+    return provided_port;
 }
 
 /// Loop until the reader reads the word 'exit' (plus optional whitespace).
