@@ -3,6 +3,7 @@ pub trait DbClient {
     fn commit(&self, data: String) -> Result<(), String>;
 }
 
+/// A no-op database client used for testing.
 pub struct DummyDbClient {
 
 }
