@@ -51,9 +51,7 @@ impl <T: DbClient> HttpHandler<T> {
     }
 
     /// Extracts the method, URI and version from an incoming HTTP request.
-    // TODO: Read headers.
-    // TODO: Check post-header line.
-    // TODO: Get message body.
+    // TODO: Read headers, check post-header line, get message body.
     fn read_http_request <R: Read> (reader: R) -> Result<HttpRequest, String> {
         let mut tokens = Vec::<String>::new();
         let mut bytes = reader.bytes();
