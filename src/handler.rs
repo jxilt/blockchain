@@ -107,14 +107,12 @@ impl <T: DbClient> HttpHandler<T> {
     }
 
     fn write_http_ok_response<W: Write>(mut writer: W) {
-        // TODO: Store this content in a file.
-        let content = "<html>\r\n<body>\r\n<h1>Hello, World!</h1>\r\n</body>\r\n</html>";
-        
-        let content_length = content.len();
+        let content = include_str!("hello_world.html");
+
         let header = format!("HTTP/1.1 200 OK\r\n\
             Content-Length: {}\r\n\
             Content-Type: text/html\r\n\
-            Connection: Closed\r\n\r\n", content_length.to_string());
+            Connection: Closed\r\n\r\n", content.len().to_string());
 
         writer.write(header.as_bytes()).expect("Failed to write HTTP response.");
         writer.write(content.as_bytes()).expect("Failed to write HTTP response.");
@@ -153,15 +151,21 @@ mod tests {
     }
 
     #[test]
-    fn handler_accepts_valid_http_requests() {
-        // TODO: Update to new response.
+    fn handler_accepts_valid_http_requests_and_returns_expected_response() {
         let valid_request = "GET / HTTP/1.1\r\n";
         let response = handle(valid_request.to_string());
 
-        assert_eq!(response, "HTTP/1.1 200 OK\r\n");
-    }
+        let expected_body = include_str!("hello_world.html");
 
-    // TODO: Test of proper content length.
+        let expected_body_length = expected_body.len();
+        let expected_headers = format!("HTTP/1.1 200 OK\r\n\
+            Content-Length: {}\r\n\
+            Content-Type: text/html\r\n\
+            Connection: Closed\r\n\r\n", expected_body_length.to_string());
+        let expected_response = expected_headers + expected_body;
+
+        assert_eq!(response, expected_response);
+    }
 
     #[test]
     fn handler_rejects_invalid_http_requests() {
