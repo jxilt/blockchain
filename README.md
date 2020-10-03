@@ -1,4 +1,4 @@
-A webserver that serves "Hello, World!" on the root.
+A webserver that serves "Hello, World!" on the localhost root.
 
 # Usage
 
