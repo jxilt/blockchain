@@ -17,16 +17,15 @@ impl Server {
         }
     }
 
-    /// Starts listening for TCP connections at the given address on a separate thread. Handles 
-    /// incoming connections.
-    /// TODO: Document that throws an exception if already listening.
+    /// Starts listening for TCP connections at the given address on a separate thread, and handles
+    /// the incoming connections. A single server can only listen once at a time.
     pub fn listen(&mut self, address: &String) {
         // We create a fresh handler for each call to `listen`. This is because `listen` spawns a 
         // new thread that must own the handler.
         let db_client = InMemoryDbClient::new();
         let handler = HttpHandler::new(db_client);
 
-        self.server_internal.listen(address, handler);
+        self.server_internal.listen(address, handler).expect("Failed to start the server.");
     }
 
     /// Stops listening for TCP connections.

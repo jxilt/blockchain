@@ -131,10 +131,10 @@ impl Handler for DummyHandler {
 
         match bytes.next() {
             Some(Ok(b'#')) => loop { },
-            // TODO: Handle the error case separately?
             _ => {
                 writer.write(b"DUMMY\n").expect("Writing failed.");
             }
+            // TODO: Handle the error case separately?
         }
     }
 }

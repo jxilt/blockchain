@@ -23,17 +23,22 @@ impl ServerInternal {
 
     /// Listens for incoming TCP connections on the given address, and handles them using the
     /// handler provided. Does not block the main thread.
-    pub fn listen <T: Handler + Send + Sync + 'static> (&mut self, address: &String, handler: T) {
-        // TODO: Check if already listening. If so, abort.
-        let interrupt_receiver = self.create_interrupt_channel();
-        ServerInternal::listen_for_tcp_connections(address, interrupt_receiver, handler);
+    pub fn listen <T: Handler + Send + Sync + 'static> (&mut self, address: &String, handler: T) -> Result<(), String> {
+        return match &self.interrupt_sender {
+            Some(_sender) => Err("The server is already listening.".to_string()),
+            None => {
+                let interrupt_receiver = self.create_interrupt_channel();
+                ServerInternal::listen_for_tcp_connections(address, interrupt_receiver, handler);
+                Ok(())
+            }
+        }
     }
 
     /// Stops listening for TCP connections.
     pub fn stop_listening(&mut self) {
         match &self.interrupt_sender {
             Some(sender) => {
-                sender.send(0).expect("Failed to send interrupt request-handling thread.");
+                sender.send(0).expect("Failed to interrupt the TCP listening thread.");
                 self.interrupt_sender = None;
             },
             None => ()
@@ -55,10 +60,9 @@ impl ServerInternal {
         // We set the listener to non-blocking so that we can check for interrupts, below.
         tcp_listener.set_nonblocking(true).expect("Failed to set listener to non-blocking.");
 
-        // TODO: Check this Arc is being used properly.
-        let handler_arc = Arc::new(handler);
-
         spawn(move || {
+            let handler_arc = Arc::new(handler);
+
             for maybe_stream in tcp_listener.incoming() {
                 match maybe_stream {
                     Ok(stream) => {
@@ -71,10 +75,8 @@ impl ServerInternal {
                         if interrupt_receiver.try_recv().is_ok() {
                             break;
                         }
-                        // TODO: Consider adding a sleep here.
                     },
-                    // TODO: Handle error.
-                    Err(_) => ()
+                    Err(e) => panic!(e)
                 }
             }
         });
@@ -95,7 +97,6 @@ mod tests {
     use std::io::{BufRead, BufReader, BufWriter, Write};
     use std::net::TcpStream;
     use std::sync::atomic::{AtomicU16, Ordering};
-    use std::thread::sleep;
 
     use crate::handler::DummyHandler;
     use crate::serverinternal::ServerInternal;
@@ -106,7 +107,7 @@ mod tests {
     fn start_server(address: &String) -> ServerInternal {
         let mut server = ServerInternal::new();
         let handler = DummyHandler {};
-        server.listen(address, handler);
+        server.listen(address, handler).expect("Failed to start the server.");
 
         return server;
     }
@@ -159,6 +160,28 @@ mod tests {
         let response = get_response(&stream);
 
         assert_eq!(response, "DUMMY\n");
+
+        server.stop_listening();
+    }
+
+    #[test]
+    fn server_can_only_listen_once_at_a_time() {
+        let mut server = ServerInternal::new();
+        let address = get_address();
+        server.listen(&address, DummyHandler {}).expect("Failed to start the server.");
+
+        // Listening again on the same address should fail.
+        let result = server.listen(&address, DummyHandler {});
+        assert!(result.is_err());
+
+        // Listening again on a different address should fail.
+        let result = server.listen(&get_address(), DummyHandler {});
+        assert!(result.is_err());
+
+        // Listening again after the server has been stopped should work.
+        server.stop_listening();
+        let result = server.listen(&address, DummyHandler {});
+        assert!(result.is_ok());
 
         server.stop_listening();
     }
@@ -220,11 +243,12 @@ mod tests {
         // Creates an infinite loop on the first connection using the '#' special character.
         let first_stream = TcpStream::connect(address.to_string()).expect("Failed to connect to server.");
         write_to_stream(&first_stream, b"#");
+
         let second_stream = TcpStream::connect(address.to_string()).expect("Failed to connect to server.");
         write_to_stream(&second_stream, b" ");
         let response = get_response(&second_stream);
 
-        // Still gets a response on the second connection.
+        // Still get a response on the second connection.
         assert_eq!("DUMMY\n", response);
 
         server.stop_listening();
