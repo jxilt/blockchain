@@ -54,15 +54,25 @@ impl<T: DbClient> HttpHandler<T> {
             match bytes.next() {
                 // We've reached the end of the current token.
                 Some(Ok(b' ')) => {
-                    let token_string = from_utf8(&token).expect("Request contained invalid UTF-8.").to_string();
-                    tokens.push(token_string);
-                    token.clear();
+                    let token_string = from_utf8(&token);
+                    match token_string {
+                        Ok(valid_token_string) => {
+                            tokens.push(valid_token_string.to_string());
+                            token.clear();
+                        },
+                        Err(_e) => return Err("Request contained invalid UTF-8.".to_string())
+                    }
                 }
 
                 // We've reached the end of the line.
                 Some(Ok(b'\r')) => {
-                    let token_string = from_utf8(&token).expect("Request contained invalid UTF-8.").to_string();
-                    tokens.push(token_string);
+                    let token_string = from_utf8(&token);
+                    match token_string {
+                        Ok(valid_token_string) => {
+                            tokens.push(valid_token_string.to_string());
+                        },
+                        Err(_e) => return Err("Request contained invalid UTF-8.".to_string())
+                    }
 
                     // We check that the next byte is a line-feed.
                     let maybe_line_feed = bytes.next();
@@ -189,6 +199,7 @@ mod tests {
             "GET / HTTP/1.1 EXTRA\r", // Missing LF.
             "GET / HTTP/1.1\n", // Missing CR.
             "GET / HTTP/1.1 EXTRA\n\r" // CR and LF in wrong order.
+            // TODO: Test for invalid UTF-8.
         ];
 
         for request in &invalid_requests {
