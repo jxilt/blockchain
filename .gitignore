@@ -1,2 +1,7 @@
-.vscode/
+# Build files.
 /target
+
+# IDE files.
+.vscode/
+.idea/
+blockchain.iml
