@@ -135,7 +135,7 @@ mod tests {
         let address = get_address();
         let mut server = start_server(&address);
 
-        TcpStream::connect(address).unwrap();
+        TcpStream::connect(address).expect("Failed to connect to server.");
 
         server.stop_listening();
     }
@@ -147,7 +147,8 @@ mod tests {
 
         server.stop_listening();
 
-        TcpStream::connect(address).unwrap_err();
+        let result = TcpStream::connect(address);
+        assert!(result.is_err());
     }
 
     #[test]

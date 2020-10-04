@@ -134,8 +134,9 @@ impl Handler for DummyHandler {
             _ => {
                 writer.write(b"DUMMY\n").expect("Writing failed.");
             }
-            // TODO: Handle the error case separately?
         }
+
+        ()
     }
 }
 
