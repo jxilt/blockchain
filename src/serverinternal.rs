@@ -1,15 +1,15 @@
 use std::io::{ErrorKind::WouldBlock};
-use std::net::{TcpListener, TcpStream};
-use std::sync::mpsc::{channel, Sender, Receiver};
-use crate::handler::{Handler};
-use std::thread::{spawn};
 use std::io::{BufReader, BufWriter};
+use std::net::{TcpListener, TcpStream};
 use std::sync::Arc;
+use std::sync::mpsc::{channel, Receiver, Sender};
+use std::thread::spawn;
+
+use crate::handler::Handler;
 
 /// The internals of the TCP server. Decoupled from the Server class to allow the request handler
 /// to be injected for testing.
 pub struct ServerInternal {
-    // TODO: Can I hide this field somehow?
     // Used to interrupt the TCP listening thread.
     interrupt_sender: Option<Sender<u8>>
 }
@@ -92,9 +92,11 @@ impl ServerInternal {
 
 #[cfg(test)]
 mod tests {
+    use std::io::{BufRead, BufReader, BufWriter, Write};
     use std::net::TcpStream;
-    use std::io::{BufReader, BufWriter, BufRead, Write};
     use std::sync::atomic::{AtomicU16, Ordering};
+    use std::thread::sleep;
+
     use crate::handler::DummyHandler;
     use crate::serverinternal::ServerInternal;
 
@@ -161,7 +163,24 @@ mod tests {
         server.stop_listening();
     }
 
-    // TODO: Test of multiple subsequent connections.
+    #[test]
+    fn there_can_be_multiple_connections_to_the_server_serially() {
+        let address = get_address();
+        let mut server = start_server(&address);
+
+        let first_stream = TcpStream::connect(address.to_string()).expect("Failed to connect to server.");
+        write_to_stream(&first_stream, b" ");
+        let first_response = get_response(&first_stream);
+
+        let second_stream = TcpStream::connect(address.to_string()).expect("Failed to connect to server.");
+        write_to_stream(&second_stream, b" ");
+        let second_response = get_response(&second_stream);
+
+        assert_eq!("DUMMY\n", first_response);
+        assert_eq!("DUMMY\n", second_response);
+
+        server.stop_listening();
+    }
 
     #[test]
     fn there_can_be_multiple_connections_to_the_server_at_once() {
@@ -194,7 +213,7 @@ mod tests {
     }
 
     #[test]
-    fn the_server_handles_multiple_connections_in_parallel() {
+    fn the_server_handles_connections_in_parallel() {
         let address = get_address();
         let mut server = start_server(&address);
 

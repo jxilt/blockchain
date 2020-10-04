@@ -114,7 +114,6 @@ impl<T: DbClient> HttpHandler<T> {
     }
 }
 
-// TODO: Can I encapsulate this inside HttpHandler somehow?
 pub struct HttpRequest {
     method: String,
     request_uri: String,
