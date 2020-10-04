@@ -25,7 +25,7 @@ impl InMemoryDbClient {
 }
 
 impl DbClient for InMemoryDbClient {
-    fn commit(&self, data: String) -> Result<(), String> {
+    fn commit(&self, _data: String) -> Result<(), String> {
         // TODO: Store data.
         return Ok(());
     }

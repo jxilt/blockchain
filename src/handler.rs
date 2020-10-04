@@ -5,46 +5,39 @@ use crate::persistence::{DbClient};
 /// A handler for TCP streams.
 pub trait Handler {
     // Handles incoming connections.
-    fn handle <R: Read, W: Write> (&self, reader: R, writer: W);
-}
-
-/// A dummy handler for testing.
-pub struct DummyHandler {}
-
-impl Handler for DummyHandler {
-    /// Writes "DUMMY" to every stream.
-    fn handle <R: Read, W: Write> (&self, _: R, mut writer: W) {
-        writer.write(b"DUMMY\n").expect("Writing failed.");
-    }
+    fn handle<R: Read, W: Write>(&self, reader: R, writer: W);
 }
 
 /// A handler for HTTP requests.
-pub struct HttpHandler <T: DbClient> {
+pub struct HttpHandler<T: DbClient> {
     // Used to connect to the database.
     db_client: T
 }
 
-impl <T: DbClient> Handler for HttpHandler<T> {
+// TODO: Handle multiple routes (just two for now). To start, create static internal mapping of
+//       routes, and serve them based on the path. Add tests (check that response contains one page
+//       of HTML vs another; no need to check headers).
+impl<T: DbClient> Handler for HttpHandler<T> {
     /// Checks the packet is properly formed, commits it to the database, and writes an ACK to the stream.
-    fn handle <R: Read, W: Write> (&self, reader: R, writer: W) {
+    fn handle<R: Read, W: Write>(&self, reader: R, writer: W) {
         let http_request = HttpHandler::<T>::read_http_request(reader);
 
         match http_request {
-            Ok(contents) => {
+            Ok(_contents) => {
                 let commit_result = self.db_client.commit("placeholder".to_string());
 
                 match commit_result {
                     Ok(_) => HttpHandler::<T>::write_http_ok_response(writer),
                     Err(_) => HttpHandler::<T>::write_http_err_response(writer)
                 }
-            },
+            }
             Err(_) => HttpHandler::<T>::write_http_err_response(writer)
         };
     }
 }
 
-impl <T: DbClient> HttpHandler<T> {
-    pub fn new (db_client: T) -> HttpHandler<T> {
+impl<T: DbClient> HttpHandler<T> {
+    pub fn new(db_client: T) -> HttpHandler<T> {
         HttpHandler {
             db_client
         }
@@ -52,7 +45,7 @@ impl <T: DbClient> HttpHandler<T> {
 
     /// Extracts the method, URI and version from an incoming HTTP request.
     // TODO: Read headers, check post-header line, get message body.
-    fn read_http_request <R: Read> (reader: R) -> Result<HttpRequest, String> {
+    fn read_http_request<R: Read>(reader: R) -> Result<HttpRequest, String> {
         let mut tokens = Vec::<String>::new();
         let mut bytes = reader.bytes();
 
@@ -64,7 +57,7 @@ impl <T: DbClient> HttpHandler<T> {
                     let token_string = from_utf8(&token).expect("Request contained invalid UTF-8.").to_string();
                     tokens.push(token_string);
                     token.clear();
-                },
+                }
 
                 // We've reached the end of the line.
                 Some(Ok(b'\r')) => {
@@ -73,24 +66,24 @@ impl <T: DbClient> HttpHandler<T> {
 
                     // We check that the next byte is a line-feed.
                     let maybe_line_feed = bytes.next();
-                    match maybe_line_feed {
+                    return match maybe_line_feed {
                         // The start-line is correctly terminated by a CRLF.
                         Some(Ok(b'\n')) => {
                             if tokens.len() != 3 {
                                 return Err("Malformed request line.".to_string());
                             }
-                    
+
                             let http_request = HttpRequest {
                                 method: tokens[0].to_string(),
                                 request_uri: tokens[1].to_string(),
-                                http_version: tokens[2].to_string()
+                                http_version: tokens[2].to_string(),
                             };
-                    
-                            return Ok(http_request);
-                        },
-                        _ => return Err("HTTP request start-line not terminated by CRLF.".to_string())
-                    }
-                },
+
+                            Ok(http_request)
+                        }
+                        _ => Err("HTTP request start-line not terminated by CRLF.".to_string())
+                    };
+                }
 
                 // We're mid-token.
                 Some(Ok(byte)) => token.push(byte),
@@ -121,10 +114,30 @@ impl <T: DbClient> HttpHandler<T> {
     }
 }
 
+// TODO: Can I encapsulate this inside HttpHandler somehow?
 pub struct HttpRequest {
     method: String,
     request_uri: String,
-    http_version: String
+    http_version: String,
+}
+
+/// A dummy handler for testing.
+pub struct DummyHandler;
+
+impl Handler for DummyHandler {
+    /// Reads the first byte. Enters an infinite loop if it reads the byte '#', which is useful for
+    /// testing parallelism of the server. Otherwise, writes "DUMMY" to the stream.
+    fn handle<R: Read, W: Write>(&self, reader: R, mut writer: W) {
+        let mut bytes = reader.bytes();
+
+        match bytes.next() {
+            Some(Ok(b'#')) => loop { },
+            // TODO: Handle the error case separately?
+            _ => {
+                writer.write(b"DUMMY\n").expect("Writing failed.");
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -139,7 +152,7 @@ mod tests {
 
         let db_client = DummyDbClient {};
         let handler = HttpHandler::new(db_client);
-        
+
         let reader = BufReader::new(request.as_bytes());
         let writer = BufWriter::new(&mut response);
 

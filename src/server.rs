@@ -2,7 +2,7 @@ use crate::serverinternal::{ServerInternal};
 use crate::persistence::{InMemoryDbClient};
 use crate::handler::{HttpHandler};
 
-/// A TCP listener.
+/// A TCP server.
 pub struct Server {
     // Work is delegated to the internal server.
     server_internal: ServerInternal
