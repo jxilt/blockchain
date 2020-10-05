@@ -1,6 +1,7 @@
 use crate::serverinternal::{ServerInternal};
 use crate::persistence::{InMemoryDbClient};
 use crate::handler::{HttpHandler};
+use std::collections::HashMap;
 
 /// A TCP server.
 pub struct Server {
@@ -23,7 +24,9 @@ impl Server {
         // We create a fresh handler for each call to `listen`. This is because `listen` spawns a 
         // new thread that must own the handler.
         let db_client = InMemoryDbClient::new();
-        let handler = HttpHandler::new(db_client);
+        let mut routes = HashMap::new();
+        routes.insert("/".to_string(), "hello_world.html".to_string());
+        let handler = HttpHandler::new(db_client, routes);
 
         self.server_internal.listen(address, handler).expect("Failed to start the server.");
     }

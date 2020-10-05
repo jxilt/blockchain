@@ -1,6 +1,7 @@
 use std::io::{Read, Write};
 use std::str::from_utf8;
 use crate::persistence::{DbClient};
+use std::collections::HashMap;
 
 /// A handler for TCP streams.
 pub trait Handler {
@@ -11,35 +12,36 @@ pub trait Handler {
 /// A handler for HTTP requests.
 pub struct HttpHandler<T: DbClient> {
     // Used to connect to the database.
-    db_client: T
+    db_client: T,
+    // Used to store the server's routes.
+    routes: HashMap<String, String>
 }
 
-// TODO: Handle multiple routes (just two for now). To start, create static internal mapping of
-//       routes, and serve them based on the path. Add tests (check that response contains one page
-//       of HTML vs another; no need to check headers).
 impl<T: DbClient> Handler for HttpHandler<T> {
     /// Checks the packet is properly formed, commits it to the database, and writes an ACK to the stream.
     fn handle<R: Read, W: Write>(&self, reader: R, writer: W) {
         let http_request = HttpHandler::<T>::read_http_request(reader);
 
         match http_request {
-            Ok(_contents) => {
+            Ok(http_request) => {
+                let maybe_file_path = self.routes.get(&http_request.request_uri);
                 let commit_result = self.db_client.commit("placeholder".to_string());
 
-                match commit_result {
-                    Ok(_) => HttpHandler::<T>::write_http_ok_response(writer),
-                    Err(_) => HttpHandler::<T>::write_http_err_response(writer)
+                match (maybe_file_path, commit_result) {
+                    (Some(file_path), Ok(_commit)) => HttpHandler::<T>::write_http_ok_response(writer, file_path.to_string()),
+                    _ => HttpHandler::<T>::write_http_err_response(writer)
                 }
             }
-            Err(_) => HttpHandler::<T>::write_http_err_response(writer)
+            Err(_e) => HttpHandler::<T>::write_http_err_response(writer)
         };
     }
 }
 
 impl<T: DbClient> HttpHandler<T> {
-    pub fn new(db_client: T) -> HttpHandler<T> {
+    pub fn new(db_client: T, routes: HashMap<String, String>) -> HttpHandler<T> {
         HttpHandler {
-            db_client
+            db_client,
+            routes
         }
     }
 
@@ -99,7 +101,7 @@ impl<T: DbClient> HttpHandler<T> {
                 Some(Ok(byte)) => token.push(byte),
 
                 // We failed to read the byte.
-                Some(Err(_)) => return Err("Could not read bytes.".to_string()),
+                Some(Err(_e)) => return Err("Could not read bytes.".to_string()),
 
                 // End of bytes.
                 None => return Err("HTTP request start-line not terminated by CRLF.".to_string())
@@ -107,7 +109,8 @@ impl<T: DbClient> HttpHandler<T> {
         }
     }
 
-    fn write_http_ok_response<W: Write>(mut writer: W) {
+    /// Writes a valid HTTP response.
+    fn write_http_ok_response<W: Write>(mut writer: W, html: String) {
         let content = include_str!("hello_world.html");
 
         let header = format!("HTTP/1.1 200 OK\r\n\
@@ -119,7 +122,9 @@ impl<T: DbClient> HttpHandler<T> {
         writer.write(content.as_bytes()).expect("Failed to write HTTP response.");
     }
 
+    /// Writes an error HTTP response.
     fn write_http_err_response<W: Write>(mut writer: W) {
+        // TODO: Display error page.
         writer.write(b"HTTP/1.1 500 INTERNAL SERVER ERROR\r\n").expect("Failed to write HTTP response.");
     }
 }
@@ -156,12 +161,15 @@ mod tests {
     use std::str::from_utf8;
     use crate::persistence::{DummyDbClient};
     use crate::handler::{Handler, HttpHandler};
+    use std::collections::HashMap;
 
     fn handle(request: String) -> String {
         let mut response = Vec::<u8>::new();
 
         let db_client = DummyDbClient {};
-        let handler = HttpHandler::new(db_client);
+        let mut routes = HashMap::new();
+        routes.insert("/".to_string(), "hello_world.html".to_string());
+        let handler = HttpHandler::new(db_client, routes);
 
         let reader = BufReader::new(request.as_bytes());
         let writer = BufWriter::new(&mut response);
@@ -177,12 +185,10 @@ mod tests {
         let response = handle(valid_request.to_string());
 
         let expected_body = include_str!("hello_world.html");
-
-        let expected_body_length = expected_body.len();
         let expected_headers = format!("HTTP/1.1 200 OK\r\n\
             Content-Length: {}\r\n\
             Content-Type: text/html\r\n\
-            Connection: Closed\r\n\r\n", expected_body_length.to_string());
+            Connection: Closed\r\n\r\n", expected_body.len().to_string());
         let expected_response = expected_headers + expected_body;
 
         assert_eq!(response, expected_response);
@@ -208,4 +214,7 @@ mod tests {
             assert_eq!(response, "HTTP/1.1 500 INTERNAL SERVER ERROR\r\n");
         }
     }
+
+    // TODO: Test of invalid routing.
+    // TODO: Test of trying to install duplicate routes.
 }
