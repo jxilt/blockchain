@@ -2,6 +2,8 @@ use std::io::{Read, Write};
 use std::str::from_utf8;
 use crate::persistence::{DbClient};
 use std::collections::HashMap;
+use std::fs::File;
+use std::fs;
 
 /// A handler for TCP streams.
 pub trait Handler {
@@ -28,7 +30,11 @@ impl<T: DbClient> Handler for HttpHandler<T> {
                 let commit_result = self.db_client.commit("placeholder".to_string());
 
                 match (maybe_file_path, commit_result) {
-                    (Some(file_path), Ok(_commit)) => HttpHandler::<T>::write_http_ok_response(writer, file_path.to_string()),
+                    (Some(file_path), Ok(_commit)) => {
+                        // TODO: Handle error gracefully.
+                        let html = fs::read_to_string(file_path).expect("File could not be read.");
+                        HttpHandler::<T>::write_http_ok_response(writer, html.to_string())
+                    },
                     _ => HttpHandler::<T>::write_http_err_response(writer)
                 }
             }
@@ -111,15 +117,13 @@ impl<T: DbClient> HttpHandler<T> {
 
     /// Writes a valid HTTP response.
     fn write_http_ok_response<W: Write>(mut writer: W, html: String) {
-        let content = include_str!("hello_world.html");
-
         let header = format!("HTTP/1.1 200 OK\r\n\
             Content-Length: {}\r\n\
             Content-Type: text/html\r\n\
-            Connection: Closed\r\n\r\n", content.len().to_string());
+            Connection: Closed\r\n\r\n", html.len().to_string());
 
         writer.write(header.as_bytes()).expect("Failed to write HTTP response.");
-        writer.write(content.as_bytes()).expect("Failed to write HTTP response.");
+        writer.write(html.as_bytes()).expect("Failed to write HTTP response.");
     }
 
     /// Writes an error HTTP response.
@@ -168,7 +172,8 @@ mod tests {
 
         let db_client = DummyDbClient {};
         let mut routes = HashMap::new();
-        routes.insert("/".to_string(), "hello_world.html".to_string());
+        routes.insert("/".to_string(), "./src/hello_world.html".to_string());
+        routes.insert("/2".to_string(), "./src/hello_world_2.html".to_string());
         let handler = HttpHandler::new(db_client, routes);
 
         let reader = BufReader::new(request.as_bytes());
@@ -193,7 +198,19 @@ mod tests {
 
         assert_eq!(response, expected_response);
 
-        // TODO: Test of a second route.
+        let valid_request = "GET /2 HTTP/1.1\r\n";
+        let response = handle(valid_request.to_string());
+
+        let expected_body = include_str!("hello_world_2.html");
+        let expected_headers = format!("HTTP/1.1 200 OK\r\n\
+            Content-Length: {}\r\n\
+            Content-Type: text/html\r\n\
+            Connection: Closed\r\n\r\n", expected_body.len().to_string());
+        let expected_response = expected_headers + expected_body;
+
+        println!("{}", response);
+
+        assert_eq!(response, expected_response);
     }
 
     #[test]
@@ -206,11 +223,11 @@ mod tests {
             "GET / HTTP/1.1", // Missing CRLF.
             "GET / HTTP/1.1 EXTRA\r", // Missing LF.
             "GET / HTTP/1.1\n", // Missing CR.
-            "GET / HTTP/1.1 EXTRA\n\r" // CR and LF in wrong order.
-            // TODO: Test for invalid UTF-8.
+            "GET / HTTP/1.1 EXTRA\n\r", // CR and LF in wrong order.
+            // TODO: Test of invalid UTF-8.
         ];
 
-        for request in &invalid_requests {
+        for request in invalid_requests.iter() {
             let response = handle(request.to_string());
 
             assert_eq!(response, "HTTP/1.1 500 INTERNAL SERVER ERROR\r\n");

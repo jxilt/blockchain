@@ -25,7 +25,7 @@ impl Server {
         // new thread that must own the handler.
         let db_client = InMemoryDbClient::new();
         let mut routes = HashMap::new();
-        routes.insert("/".to_string(), "hello_world.html".to_string());
+        routes.insert("/".to_string(), "./src/hello_world.html".to_string());
         let handler = HttpHandler::new(db_client, routes);
 
         self.server_internal.listen(address, handler).expect("Failed to start the server.");
