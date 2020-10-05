@@ -192,6 +192,8 @@ mod tests {
         let expected_response = expected_headers + expected_body;
 
         assert_eq!(response, expected_response);
+
+        // TODO: Test of a second route.
     }
 
     #[test]
@@ -215,6 +217,13 @@ mod tests {
         }
     }
 
-    // TODO: Test of invalid routing.
+    #[test]
+    fn handler_rejects_unknown_routes() {
+        let valid_request = "GET /unknown_route HTTP/1.1\r\n";
+        let response = handle(valid_request.to_string());
+
+        assert_eq!(response, "HTTP/1.1 500 INTERNAL SERVER ERROR\r\n");
+    }
+
     // TODO: Test of trying to install duplicate routes.
 }
