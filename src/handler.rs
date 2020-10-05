@@ -2,7 +2,6 @@ use std::io::{Read, Write};
 use std::str::from_utf8;
 use crate::persistence::{DbClient};
 use std::collections::HashMap;
-use std::fs::File;
 use std::fs;
 
 /// A handler for TCP streams.
@@ -25,20 +24,22 @@ impl<T: DbClient> Handler for HttpHandler<T> {
         let http_request = HttpHandler::<T>::read_http_request(reader);
 
         match http_request {
+            Err(_e) => HttpHandler::<T>::write_http_err_response(writer),
             Ok(http_request) => {
                 let maybe_file_path = self.routes.get(&http_request.request_uri);
-                let commit_result = self.db_client.commit("placeholder".to_string());
 
-                match (maybe_file_path, commit_result) {
-                    (Some(file_path), Ok(_commit)) => {
-                        // TODO: Handle error gracefully.
-                        let html = fs::read_to_string(file_path).expect("File could not be read.");
-                        HttpHandler::<T>::write_http_ok_response(writer, html.to_string())
-                    },
-                    _ => HttpHandler::<T>::write_http_err_response(writer)
+                match maybe_file_path {
+                    None => HttpHandler::<T>::write_http_err_response(writer),
+                    Some(file_path) => {
+                        let maybe_html = fs::read_to_string(file_path);
+
+                        match maybe_html {
+                            Err(_e) => HttpHandler::<T>::write_http_err_response(writer),
+                            Ok(html) =>  HttpHandler::<T>::write_http_ok_response(writer, html.to_string())
+                        }
+                    }
                 }
             }
-            Err(_e) => HttpHandler::<T>::write_http_err_response(writer)
         };
     }
 }
@@ -64,11 +65,11 @@ impl<T: DbClient> HttpHandler<T> {
                 Some(Ok(b' ')) => {
                     let token_string = from_utf8(&token);
                     match token_string {
+                        Err(_e) => return Err("Request contained invalid UTF-8.".to_string()),
                         Ok(valid_token_string) => {
                             tokens.push(valid_token_string.to_string());
                             token.clear();
-                        },
-                        Err(_e) => return Err("Request contained invalid UTF-8.".to_string())
+                        }
                     }
                 }
 
@@ -76,10 +77,10 @@ impl<T: DbClient> HttpHandler<T> {
                 Some(Ok(b'\r')) => {
                     let token_string = from_utf8(&token);
                     match token_string {
+                        Err(_e) => return Err("Request contained invalid UTF-8.".to_string()),
                         Ok(valid_token_string) => {
                             tokens.push(valid_token_string.to_string());
-                        },
-                        Err(_e) => return Err("Request contained invalid UTF-8.".to_string())
+                        }
                     }
 
                     // We check that the next byte is a line-feed.
@@ -109,7 +110,7 @@ impl<T: DbClient> HttpHandler<T> {
                 // We failed to read the byte.
                 Some(Err(_e)) => return Err("Could not read bytes.".to_string()),
 
-                // End of bytes.
+                // We've reached the end of the bytes without encountering a CRLF.
                 None => return Err("HTTP request start-line not terminated by CRLF.".to_string())
             }
         }
@@ -186,6 +187,7 @@ mod tests {
 
     #[test]
     fn handler_accepts_valid_http_requests_and_returns_expected_response() {
+        // TODO: Refactor to remove duplicated code.
         let valid_request = "GET / HTTP/1.1\r\n";
         let response = handle(valid_request.to_string());
 
@@ -207,8 +209,6 @@ mod tests {
             Content-Type: text/html\r\n\
             Connection: Closed\r\n\r\n", expected_body.len().to_string());
         let expected_response = expected_headers + expected_body;
-
-        println!("{}", response);
 
         assert_eq!(response, expected_response);
     }
@@ -241,6 +241,4 @@ mod tests {
 
         assert_eq!(response, "HTTP/1.1 500 INTERNAL SERVER ERROR\r\n");
     }
-
-    // TODO: Test of trying to install duplicate routes.
 }

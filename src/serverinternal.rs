@@ -37,11 +37,11 @@ impl ServerInternal {
     /// Stops listening for TCP connections.
     pub fn stop_listening(&mut self) {
         match &self.interrupt_sender {
+            None => (),
             Some(sender) => {
                 sender.send(0).expect("Failed to interrupt the TCP listening thread.");
                 self.interrupt_sender = None;
-            },
-            None => ()
+            }
         }
     }
 
