@@ -123,8 +123,7 @@ impl<T: DbClient> HttpHandler<T> {
             Content-Type: text/html\r\n\
             Connection: Closed\r\n\r\n", html.len().to_string());
 
-        writer.write(header.as_bytes()).expect("Failed to write HTTP response.");
-        writer.write(html.as_bytes()).expect("Failed to write HTTP response.");
+        writer.write((header + &html).as_bytes()).expect("Failed to write HTTP response.");
     }
 
     /// Writes an error HTTP response.
