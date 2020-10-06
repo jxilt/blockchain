@@ -167,6 +167,7 @@ mod tests {
     use crate::persistence::{DummyDbClient};
     use crate::handler::{Handler, HttpHandler};
     use std::collections::HashMap;
+    use std::fs;
 
     fn handle(request: String) -> String {
         let mut response = Vec::<u8>::new();
@@ -187,30 +188,23 @@ mod tests {
 
     #[test]
     fn handler_accepts_valid_http_requests_and_returns_expected_response() {
-        // TODO: Refactor to remove duplicated code.
-        let valid_request = "GET / HTTP/1.1\r\n";
-        let response = handle(valid_request.to_string());
+        let valid_requests_and_body_paths = [
+            ("GET / HTTP/1.1\r\n", "./src/hello_world.html"),
+            ("GET /2 HTTP/1.1\r\n", "./src/hello_world_2.html")
+        ];
 
-        let expected_body = include_str!("hello_world.html");
-        let expected_headers = format!("HTTP/1.1 200 OK\r\n\
+        for (valid_request, body_path) in valid_requests_and_body_paths.iter() {
+            let response = handle(valid_request.to_string());
+
+            let expected_body = fs::read_to_string(body_path).expect("Could not find file.");
+            let expected_headers = format!("HTTP/1.1 200 OK\r\n\
             Content-Length: {}\r\n\
             Content-Type: text/html\r\n\
             Connection: Closed\r\n\r\n", expected_body.len().to_string());
-        let expected_response = expected_headers + expected_body;
+            let expected_response = expected_headers + &expected_body;
 
-        assert_eq!(response, expected_response);
-
-        let valid_request = "GET /2 HTTP/1.1\r\n";
-        let response = handle(valid_request.to_string());
-
-        let expected_body = include_str!("hello_world_2.html");
-        let expected_headers = format!("HTTP/1.1 200 OK\r\n\
-            Content-Length: {}\r\n\
-            Content-Type: text/html\r\n\
-            Connection: Closed\r\n\r\n", expected_body.len().to_string());
-        let expected_response = expected_headers + expected_body;
-
-        assert_eq!(response, expected_response);
+            assert_eq!(response, expected_response);
+        }
     }
 
     #[test]
