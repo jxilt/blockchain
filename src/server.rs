@@ -24,6 +24,7 @@ impl Server {
         // We create a fresh handler for each call to `listen`. This is because `listen` spawns a 
         // new thread that must own the handler.
         let db_client = InMemoryDbClient::new();
+        // TODO: Move route installation to top level (in main.rs).
         let mut routes = HashMap::new();
         routes.insert("/".to_string(), "./src/hello_world.html".to_string());
         let handler = HttpHandler::new(db_client, routes);

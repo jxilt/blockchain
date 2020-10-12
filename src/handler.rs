@@ -4,6 +4,8 @@ use crate::persistence::{DbClient};
 use std::collections::HashMap;
 use std::fs;
 
+const ERROR_PAGE: &str = "./src/500.html";
+
 /// A handler for TCP streams.
 pub trait Handler {
     // Handles incoming connections.
@@ -128,8 +130,15 @@ impl<T: DbClient> HttpHandler<T> {
 
     /// Writes an error HTTP response.
     fn write_http_err_response<W: Write>(mut writer: W) {
-        // TODO: Display error page.
-        writer.write(b"HTTP/1.1 500 INTERNAL SERVER ERROR\r\n").expect("Failed to write HTTP response.");
+        // TODO: Pull out magic string.
+        let html = fs::read_to_string(ERROR_PAGE).expect("Failed to find error page.");
+
+        let header = format!("HTTP/1.1 500 INTERNAL SERVER ERROR\r\n\
+            Content-Length: {}\r\n\
+            Content-Type: text/html\r\n\
+            Connection: Closed\r\n\r\n", html.len().to_string());
+
+        writer.write((header + &html).as_bytes()).expect("Failed to write HTTP response.");
     }
 }
 
@@ -168,6 +177,8 @@ mod tests {
     use std::collections::HashMap;
     use std::fs;
 
+    const ERROR_PAGE: &str = "./src/500.html";
+
     fn handle(request: String) -> String {
         let mut response = Vec::<u8>::new();
 
@@ -197,9 +208,9 @@ mod tests {
 
             let expected_body = fs::read_to_string(body_path).expect("Could not find file.");
             let expected_headers = format!("HTTP/1.1 200 OK\r\n\
-            Content-Length: {}\r\n\
-            Content-Type: text/html\r\n\
-            Connection: Closed\r\n\r\n", expected_body.len().to_string());
+                Content-Length: {}\r\n\
+                Content-Type: text/html\r\n\
+                Connection: Closed\r\n\r\n", expected_body.len().to_string());
             let expected_response = expected_headers + &expected_body;
 
             assert_eq!(response, expected_response);
@@ -220,10 +231,17 @@ mod tests {
             // TODO: Test of invalid UTF-8.
         ];
 
+        let expected_body = fs::read_to_string(ERROR_PAGE).expect("Failed to find error page.");
+        let expected_headers = format!("HTTP/1.1 500 INTERNAL SERVER ERROR\r\n\
+                Content-Length: {}\r\n\
+                Content-Type: text/html\r\n\
+                Connection: Closed\r\n\r\n", expected_body.len().to_string());
+        let expected_response = expected_headers + &expected_body;
+
         for request in invalid_requests.iter() {
             let response = handle(request.to_string());
 
-            assert_eq!(response, "HTTP/1.1 500 INTERNAL SERVER ERROR\r\n");
+            assert_eq!(response, expected_response);
         }
     }
 
@@ -232,6 +250,13 @@ mod tests {
         let valid_request = "GET /unknown_route HTTP/1.1\r\n";
         let response = handle(valid_request.to_string());
 
-        assert_eq!(response, "HTTP/1.1 500 INTERNAL SERVER ERROR\r\n");
+        let expected_body = fs::read_to_string(ERROR_PAGE).expect("Failed to find error page.");
+        let expected_headers = format!("HTTP/1.1 500 INTERNAL SERVER ERROR\r\n\
+                Content-Length: {}\r\n\
+                Content-Type: text/html\r\n\
+                Connection: Closed\r\n\r\n", expected_body.len().to_string());
+        let expected_response = expected_headers + &expected_body;
+
+        assert_eq!(response, expected_response);
     }
 }
