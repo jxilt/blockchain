@@ -34,12 +34,7 @@ impl<T: DbClient> Handler for HttpHandler<T> {
                 match maybe_file_path {
                     None => HttpHandler::<T>::write_http_404_response(writer),
                     Some(file_path) => {
-                        let maybe_html = fs::read_to_string(file_path);
-
-                        match maybe_html {
-                            Err(_e) => HttpHandler::<T>::write_http_500_response(writer),
-                            Ok(html) =>  HttpHandler::<T>::write_http_ok_response(writer, html.to_string())
-                        }
+                        HttpHandler::<T>::write_http_ok_response(writer, file_path)
                     }
                 }
             }
@@ -120,37 +115,30 @@ impl<T: DbClient> HttpHandler<T> {
     }
 
     /// Writes a valid HTTP response.
-    fn write_http_ok_response<W: Write>(mut writer: W, html: String) {
-        let header = format!("HTTP/1.1 200 OK\r\n\
-            Content-Length: {}\r\n\
-            Content-Type: text/html\r\n\
-            Connection: Closed\r\n\r\n", html.len().to_string());
-
-        writer.write((header + &html).as_bytes()).expect("Failed to write HTTP response.");
+    fn write_http_ok_response<W: Write>(mut writer: W, file_path: &str) {
+        HttpHandler::<T>::write_http_response(writer, "200 OK", file_path);
     }
 
     /// Writes a 500 HTTP response.
     fn write_http_500_response<W: Write>(mut writer: W) {
-        let html = fs::read_to_string(ERROR_PAGE_500).expect("Failed to find error page.");
-
-        let header = format!("HTTP/1.1 500 INTERNAL SERVER ERROR\r\n\
-            Content-Length: {}\r\n\
-            Content-Type: text/html\r\n\
-            Connection: Closed\r\n\r\n", html.len().to_string());
-
-        writer.write((header + &html).as_bytes()).expect("Failed to write HTTP response.");
+        HttpHandler::<T>::write_http_response(writer, "500 INTERNAL SERVER ERROR", ERROR_PAGE_500);
     }
 
     /// Writes a 404 HTTP response.
     fn write_http_404_response<W: Write>(mut writer: W) {
-        let html = fs::read_to_string(ERROR_PAGE_404).expect("Failed to find error page.");
+        HttpHandler::<T>::write_http_response(writer, "404 NOT FOUND", ERROR_PAGE_404);
+    }
 
-        let header = format!("HTTP/1.1 404 NOT FOUND\r\n\
+    /// Writes an HTTP response for a given status code and page.
+    fn write_http_response<W: Write>(mut writer: W, status_code: &str, page_path: &str) {
+        let html = fs::read_to_string(page_path).expect("Failed to find error page.");
+
+        let headers = format!("HTTP/1.1 {}\r\n\
             Content-Length: {}\r\n\
             Content-Type: text/html\r\n\
-            Connection: Closed\r\n\r\n", html.len().to_string());
+            Connection: Closed\r\n\r\n", status_code, html.len().to_string());
 
-        writer.write((header + &html).as_bytes()).expect("Failed to write HTTP response.");
+        writer.write((headers + &html).as_bytes()).expect("Failed to write HTTP response.");
     }
 }
 
