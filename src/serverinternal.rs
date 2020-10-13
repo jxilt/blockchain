@@ -38,13 +38,18 @@ impl <T: Handler + Sync + Send + 'static> ServerInternal<T> {
     }
 
     /// Stops listening for TCP connections.
-    pub fn stop_listening(&mut self) {
-        // TODO: Err is returned when interrupting a closed server, with tests.
-        match &self.interrupt_sender {
-            None => (),
+    pub fn stop_listening(&mut self) -> Result<(), String> {
+        return match &self.interrupt_sender {
+            None => Err("Server is not currently listening.".to_string()),
             Some(sender) => {
-                sender.send(0).expect("Failed to interrupt the TCP listening thread.");
-                self.interrupt_sender = None;
+                let maybe_interrupt = sender.send(0);
+                match maybe_interrupt {
+                    Err(e) => Err("Failed to interrupt the TCP listening thread.".to_string()),
+                    Ok(_) => {
+                        self.interrupt_sender = None;
+                        Ok(())
+                    }
+                }
             }
         }
     }
@@ -117,7 +122,6 @@ mod tests {
     fn start_server(address: &String) -> ServerInternal<DummyHandler> {
         let mut server = ServerInternal::new(DummyHandler {});
         server.listen(address).expect("Failed to start the server.");
-
         return server;
     }
 
@@ -157,6 +161,21 @@ mod tests {
         server.stop_listening();
 
         let result = TcpStream::connect(address);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn server_can_only_be_stopped_while_listening() {
+        // Server cannot be stopped before starting listening initially.
+        let mut server = ServerInternal::new(DummyHandler {});
+        let result = server.stop_listening();
+        assert!(result.is_err());
+
+        // Server cannot be stopped when no longer listening.
+        let address = get_address();
+        server.listen(&address).expect("Failed to start the server.");
+        let result = server.stop_listening();
+        let result = server.stop_listening();
         assert!(result.is_err());
     }
 
