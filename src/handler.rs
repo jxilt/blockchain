@@ -4,7 +4,8 @@ use crate::persistence::{DbClient};
 use std::collections::HashMap;
 use std::fs;
 
-const ERROR_PAGE: &str = "./src/500.html";
+const ERROR_PAGE_404: &str = "./src/404.html";
+const ERROR_PAGE_500: &str = "./src/500.html";
 
 /// A handler for TCP streams.
 pub trait Handler {
@@ -26,17 +27,17 @@ impl<T: DbClient> Handler for HttpHandler<T> {
         let http_request = HttpHandler::<T>::read_http_request(reader);
 
         match http_request {
-            Err(_e) => HttpHandler::<T>::write_http_err_response(writer),
+            Err(_e) => HttpHandler::<T>::write_http_500_response(writer),
             Ok(http_request) => {
                 let maybe_file_path = self.routes.get(&http_request.request_uri);
 
                 match maybe_file_path {
-                    None => HttpHandler::<T>::write_http_err_response(writer),
+                    None => HttpHandler::<T>::write_http_404_response(writer),
                     Some(file_path) => {
                         let maybe_html = fs::read_to_string(file_path);
 
                         match maybe_html {
-                            Err(_e) => HttpHandler::<T>::write_http_err_response(writer),
+                            Err(_e) => HttpHandler::<T>::write_http_500_response(writer),
                             Ok(html) =>  HttpHandler::<T>::write_http_ok_response(writer, html.to_string())
                         }
                     }
@@ -128,12 +129,23 @@ impl<T: DbClient> HttpHandler<T> {
         writer.write((header + &html).as_bytes()).expect("Failed to write HTTP response.");
     }
 
-    /// Writes an error HTTP response.
-    fn write_http_err_response<W: Write>(mut writer: W) {
-        // TODO: Pull out magic string.
-        let html = fs::read_to_string(ERROR_PAGE).expect("Failed to find error page.");
+    /// Writes a 500 HTTP response.
+    fn write_http_500_response<W: Write>(mut writer: W) {
+        let html = fs::read_to_string(ERROR_PAGE_500).expect("Failed to find error page.");
 
         let header = format!("HTTP/1.1 500 INTERNAL SERVER ERROR\r\n\
+            Content-Length: {}\r\n\
+            Content-Type: text/html\r\n\
+            Connection: Closed\r\n\r\n", html.len().to_string());
+
+        writer.write((header + &html).as_bytes()).expect("Failed to write HTTP response.");
+    }
+
+    /// Writes a 404 HTTP response.
+    fn write_http_404_response<W: Write>(mut writer: W) {
+        let html = fs::read_to_string(ERROR_PAGE_404).expect("Failed to find error page.");
+
+        let header = format!("HTTP/1.1 404 NOT FOUND\r\n\
             Content-Length: {}\r\n\
             Content-Type: text/html\r\n\
             Connection: Closed\r\n\r\n", html.len().to_string());
@@ -177,7 +189,8 @@ mod tests {
     use std::collections::HashMap;
     use std::fs;
 
-    const ERROR_PAGE: &str = "./src/500.html";
+    const ERROR_PAGE_404: &str = "./src/404.html";
+    const ERROR_PAGE_500: &str = "./src/500.html";
 
     fn handle(request: String) -> String {
         let mut response = Vec::<u8>::new();
@@ -231,7 +244,7 @@ mod tests {
             // TODO: Test of invalid UTF-8.
         ];
 
-        let expected_body = fs::read_to_string(ERROR_PAGE).expect("Failed to find error page.");
+        let expected_body = fs::read_to_string(ERROR_PAGE_500).expect("Failed to find error page.");
         let expected_headers = format!("HTTP/1.1 500 INTERNAL SERVER ERROR\r\n\
                 Content-Length: {}\r\n\
                 Content-Type: text/html\r\n\
@@ -250,8 +263,8 @@ mod tests {
         let valid_request = "GET /unknown_route HTTP/1.1\r\n";
         let response = handle(valid_request.to_string());
 
-        let expected_body = fs::read_to_string(ERROR_PAGE).expect("Failed to find error page.");
-        let expected_headers = format!("HTTP/1.1 500 INTERNAL SERVER ERROR\r\n\
+        let expected_body = fs::read_to_string(ERROR_PAGE_404).expect("Failed to find error page.");
+        let expected_headers = format!("HTTP/1.1 404 NOT FOUND\r\n\
                 Content-Length: {}\r\n\
                 Content-Type: text/html\r\n\
                 Connection: Closed\r\n\r\n", expected_body.len().to_string());
