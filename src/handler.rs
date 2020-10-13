@@ -184,10 +184,10 @@ mod tests {
         let mut response = Vec::<u8>::new();
 
         let db_client = DummyDbClient {};
-        let routes: HashMap<String, String> = [
+        let routes = [
             ("/".to_string(), "./src/hello_world.html".to_string()),
-            ("/2".to_string(), "./src/hello_world_2.html".to_string())]
-            .iter().cloned().collect();
+            ("/2".to_string(), "./src/hello_world_2.html".to_string())
+        ].iter().cloned().collect();
         let handler = HttpHandler::new(db_client, routes);
 
         let reader = BufReader::new(request.as_bytes());

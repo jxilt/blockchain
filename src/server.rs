@@ -2,6 +2,7 @@ use crate::serverinternal::{ServerInternal};
 use crate::persistence::{InMemoryDbClient};
 use crate::handler::{HttpHandler};
 use std::collections::HashMap;
+use std::iter::Map;
 
 /// A TCP server that wraps the ServerInternal class, to allow different request handlers to be
 /// injected when testing the latter.
@@ -11,10 +12,7 @@ pub struct Server {
 }
 
 impl Server {
-    pub fn new() -> Server {
-        // TODO: Move routes to top-level (in main.rs).
-        let routes: HashMap<String, String> = [("/".to_string(), "./src/hello_world.html".to_string())]
-            .iter().cloned().collect();
+    pub fn new(routes: HashMap<String, String>) -> Server {
         let handler_db_client = InMemoryDbClient::new();
         let handler = HttpHandler::new(handler_db_client, routes);
 

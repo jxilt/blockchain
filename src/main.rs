@@ -2,6 +2,8 @@ use std::env;
 use std::env::Args;
 use std::io::{BufRead, stdin};
 use crate::server::Server;
+use std::collections::HashMap;
+use std::iter::Map;
 
 mod server;
 mod serverinternal;
@@ -13,9 +15,13 @@ mod persistence;
 pub fn main() {
     let args = env::args();
     let port = extract_port_from_args(args);
-    let address = format!("0.0.0.0:{}", port);
 
-    let mut server = Server::new();
+    let routes = [
+        ("/".to_string(), "./src/hello_world.html".to_string())
+    ].iter().cloned().collect();
+    let mut server = Server::new(routes);
+
+    let address = format!("0.0.0.0:{}", port);
     server.listen(&address);
     loop_until_exit_requested(stdin().lock());
     server.stop_listening();
