@@ -7,8 +7,7 @@ use std::thread::spawn;
 
 use crate::handler::Handler;
 
-/// The internals of the TCP server. Decoupled from the Server class to allow the request handler
-/// to be injected for testing.
+/// The TCP server itself.
 pub struct ServerInternal {
     // Used to interrupt the TCP listening thread.
     interrupt_sender: Option<Sender<u8>>

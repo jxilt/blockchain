@@ -9,6 +9,7 @@ pub struct Server {
     server_internal: ServerInternal
 }
 
+/// Wraps the ServerInternal class, to allow different request handlers to be injected for testing.
 impl Server {
     pub fn new() -> Server {
         let server_internal = ServerInternal::new();
@@ -21,6 +22,7 @@ impl Server {
     /// Starts listening for TCP connections at the given address on a separate thread, and handles
     /// the incoming connections. A single server can only listen once at a time.
     pub fn listen(&mut self, address: &String) {
+        // TODO: Allow a single handler to be shared across threads.
         // We create a fresh handler for each call to `listen`. This is because `listen` spawns a 
         // new thread that must own the handler.
         let db_client = InMemoryDbClient::new();
