@@ -1,8 +1,8 @@
 use std::io::{Read, Write};
 use std::str::from_utf8;
 use crate::persistence::{DbClient};
-use std::collections::HashMap;
 use std::fs;
+use std::collections::HashMap;
 
 const ERROR_PAGE_404: &str = "./src/404.html";
 const ERROR_PAGE_500: &str = "./src/500.html";
@@ -115,17 +115,17 @@ impl<T: DbClient> HttpHandler<T> {
     }
 
     /// Writes a valid HTTP response.
-    fn write_http_ok_response<W: Write>(mut writer: W, file_path: &str) {
+    fn write_http_ok_response<W: Write>(writer: W, file_path: &str) {
         HttpHandler::<T>::write_http_response(writer, "200 OK", file_path);
     }
 
     /// Writes a 500 HTTP response.
-    fn write_http_500_response<W: Write>(mut writer: W) {
+    fn write_http_500_response<W: Write>(writer: W) {
         HttpHandler::<T>::write_http_response(writer, "500 INTERNAL SERVER ERROR", ERROR_PAGE_500);
     }
 
     /// Writes a 404 HTTP response.
-    fn write_http_404_response<W: Write>(mut writer: W) {
+    fn write_http_404_response<W: Write>(writer: W) {
         HttpHandler::<T>::write_http_response(writer, "404 NOT FOUND", ERROR_PAGE_404);
     }
 
@@ -184,7 +184,7 @@ mod tests {
         let mut response = Vec::<u8>::new();
 
         let db_client = DummyDbClient {};
-        let routes = [
+        let routes: HashMap<String, String> = [
             ("/".to_string(), "./src/hello_world.html".to_string()),
             ("/2".to_string(), "./src/hello_world_2.html".to_string())]
             .iter().cloned().collect();
