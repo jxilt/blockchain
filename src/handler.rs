@@ -42,7 +42,7 @@ impl<T: DbClient> Handler for HttpHandler<T> {
     }
 }
 
-impl<T: DbClient> HttpHandler<T> {
+impl <T: DbClient> HttpHandler<T> {
     pub fn new(db_client: T, routes: HashMap<String, String>) -> HttpHandler<T> {
         HttpHandler {
             db_client,

@@ -1,33 +1,39 @@
 use std::io::{ErrorKind::WouldBlock};
 use std::io::{BufReader, BufWriter};
 use std::net::{TcpListener, TcpStream};
-use std::sync::Arc;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread::spawn;
 
-use crate::handler::Handler;
+use crate::handler::{Handler};
+use std::sync::Arc;
 
 /// The TCP server itself.
-pub struct ServerInternal {
+pub struct ServerInternal <T: Handler + Sync + Send + 'static> {
     // Used to interrupt the TCP listening thread.
-    interrupt_sender: Option<Sender<u8>>
+    interrupt_sender: Option<Sender<u8>>,
+    // Uses to handle requests. An Arc is used to allow the handler to be shared across responder
+    // threads.
+    handler: Arc<T>
 }
 
-impl ServerInternal {
-    pub fn new() -> ServerInternal {
+impl <T: Handler + Sync + Send + 'static> ServerInternal<T> {
+    pub fn new(handler: T) -> ServerInternal<T> {
         ServerInternal {
-            interrupt_sender: None
+            // An interrupt send is set when the server starts listening.
+            interrupt_sender: None,
+            handler: Arc::new(handler)
         }
     }
 
-    /// Listens for incoming TCP connections on the given address, and handles them using the
-    /// handler provided. Does not block the main thread.
-    pub fn listen <T: Handler + Send + Sync + 'static> (&mut self, address: &String, handler: T) -> Result<(), String> {
+    /// Sets up an interrupt to kill the main server thread as needed. Then listens for and handles
+    /// incoming TCP connections on the given address, using a separate thread.
+    pub fn listen(&mut self, address: &String) -> Result<(), String> {
         return match &self.interrupt_sender {
+            // TODO: Move this logic down into interrupt_channel.
             Some(_sender) => Err("The server is already listening.".to_string()),
             None => {
                 let interrupt_receiver = self.create_interrupt_channel();
-                ServerInternal::listen_for_tcp_connections(address, interrupt_receiver, handler);
+                ServerInternal::listen_for_tcp_connections(self, address, interrupt_receiver);
                 Ok(())
             }
         }
@@ -35,6 +41,7 @@ impl ServerInternal {
 
     /// Stops listening for TCP connections.
     pub fn stop_listening(&mut self) {
+        // TODO: Err is returned when interrupting a closed server, with tests.
         match &self.interrupt_sender {
             None => (),
             Some(sender) => {
@@ -52,21 +59,21 @@ impl ServerInternal {
         return interrupt_receiver;
     }
 
-    /// Listens for incoming TCP connections on the given address, and handles them using the
-    /// handler provided. Does not block the main thread, and uses a thread per connection.
-    fn listen_for_tcp_connections <T: Handler + Send + Sync + 'static> (address: &String, interrupt_receiver: Receiver<u8>, handler: T) {
+    /// Listens for and handles incoming TCP connections on the given address, using a separate
+    /// thread.
+    // TODO: Pass down handler, not self.
+    fn listen_for_tcp_connections(&self, address: &String, interrupt_receiver: Receiver<u8>) {
         let tcp_listener = TcpListener::bind(address).expect("Failed to bind listener to address.");
         // We set the listener to non-blocking so that we can check for interrupts, below.
         tcp_listener.set_nonblocking(true).expect("Failed to set listener to non-blocking.");
 
+        let handler_arc = Arc::clone(&self.handler);
         spawn(move || {
-            let handler_arc = Arc::new(handler);
-
             for maybe_stream in tcp_listener.incoming() {
                 match maybe_stream {
                     Ok(stream) => {
-                        let handler_arc_clone= Arc::clone(&handler_arc);
-                        spawn(move || ServerInternal::handle_tcp_stream(stream, handler_arc_clone));
+                        let handler_arc_clone = handler_arc.clone();
+                        spawn(move || ServerInternal::<T>::handle_tcp_stream(stream, handler_arc_clone));
                     }
                     // The listener has not received a new connection yet.
                     Err(e) if e.kind() == WouldBlock => {
@@ -81,7 +88,7 @@ impl ServerInternal {
         });
     }
 
-    fn handle_tcp_stream <T: Handler + Send + 'static> (stream: TcpStream, handler: Arc<T>) {
+    fn handle_tcp_stream<U: Handler + Sync + Send + 'static>(stream: TcpStream, handler: Arc<U>) {
         // We reverse the non-blocking behaviour set at the listener level.
         stream.set_nonblocking(false).expect("Failed to set stream to blocking.");
 
@@ -97,16 +104,16 @@ mod tests {
     use std::net::TcpStream;
     use std::sync::atomic::{AtomicU16, Ordering};
 
-    use crate::handler::DummyHandler;
+    use crate::handler::{DummyHandler};
     use crate::serverinternal::ServerInternal;
+    use crate::persistence::InMemoryDbClient;
 
     // Used to allocate different ports for the listeners across tests.
     static PORT: AtomicU16 = AtomicU16::new(10000);
 
-    fn start_server(address: &String) -> ServerInternal {
-        let mut server = ServerInternal::new();
-        let handler = DummyHandler {};
-        server.listen(address, handler).expect("Failed to start the server.");
+    fn start_server(address: &String) -> ServerInternal<DummyHandler> {
+        let mut server = ServerInternal::new(DummyHandler {});
+        server.listen(address).expect("Failed to start the server.");
 
         return server;
     }
@@ -166,21 +173,21 @@ mod tests {
 
     #[test]
     fn server_can_only_listen_once_at_a_time() {
-        let mut server = ServerInternal::new();
+        let mut server = ServerInternal::new(DummyHandler {});
         let address = get_address();
-        server.listen(&address, DummyHandler {}).expect("Failed to start the server.");
+        server.listen(&address).expect("Failed to start the server.");
 
         // Listening again on the same address should fail.
-        let result = server.listen(&address, DummyHandler {});
+        let result = server.listen(&address);
         assert!(result.is_err());
 
         // Listening again on a different address should fail.
-        let result = server.listen(&get_address(), DummyHandler {});
+        let result = server.listen(&get_address());
         assert!(result.is_err());
 
         // Listening again after the server has been stopped should work.
         server.stop_listening();
-        let result = server.listen(&address, DummyHandler {});
+        let result = server.listen(&address);
         assert!(result.is_ok());
 
         server.stop_listening();
