@@ -28,11 +28,9 @@ impl <T: Handler + Sync + Send + 'static> ServerInternal<T> {
     /// Sets up an interrupt to kill the main server thread as needed. Then listens for and handles
     /// incoming TCP connections on the given address, using a separate thread.
     pub fn listen(&mut self, address: &String) -> Result<(), String> {
-        return match &self.interrupt_sender {
-            // TODO: Move this logic down into interrupt_channel.
-            Some(_sender) => Err("The server is already listening.".to_string()),
-            None => {
-                let interrupt_receiver = self.create_interrupt_channel();
+        return match self.create_interrupt_channel() {
+            Err(e) => Err(e),
+            Ok(interrupt_receiver) => {
                 ServerInternal::listen_for_tcp_connections(self, address, interrupt_receiver);
                 Ok(())
             }
@@ -53,15 +51,21 @@ impl <T: Handler + Sync + Send + 'static> ServerInternal<T> {
 
     /// Creates a channel between the main thread and the TCP listening thread, in order to allow
     /// us to interrupt the latter.
-    fn create_interrupt_channel(&mut self) -> Receiver<u8> {
-        let (interrupt_sender, interrupt_receiver) = channel::<u8>();
-        self.interrupt_sender = Some(interrupt_sender);
-        return interrupt_receiver;
+    fn create_interrupt_channel(&mut self) -> Result<Receiver<u8>, String> {
+        return match &self.interrupt_sender {
+            Some(_sender) => Err("The server is already listening.".to_string()),
+            None => {
+                let (interrupt_sender, interrupt_receiver) = channel::<u8>();
+                self.interrupt_sender = Some(interrupt_sender);
+                Ok(interrupt_receiver)
+            }
+        }
     }
 
     /// Listens for and handles incoming TCP connections on the given address, using a separate
     /// thread.
     // TODO: Pass down handler, not self.
+    // TODO: Return results from functions, here and more generally.
     fn listen_for_tcp_connections(&self, address: &String, interrupt_receiver: Receiver<u8>) {
         let tcp_listener = TcpListener::bind(address).expect("Failed to bind listener to address.");
         // We set the listener to non-blocking so that we can check for interrupts, below.
@@ -106,7 +110,6 @@ mod tests {
 
     use crate::handler::{DummyHandler};
     use crate::serverinternal::ServerInternal;
-    use crate::persistence::InMemoryDbClient;
 
     // Used to allocate different ports for the listeners across tests.
     static PORT: AtomicU16 = AtomicU16::new(10000);
