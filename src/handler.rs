@@ -132,14 +132,14 @@ impl <T: DbClient> HttpHandler<T> {
 
     /// Writes an HTTP response for a given status code and page.
     fn write_http_response<W: Write>(mut writer: W, status_code: &str, page_path: &str) {
-        let html = fs::read_to_string(page_path).expect("Failed to find error page.");
+        let html = fs::read_to_string(page_path).unwrap();
 
         let headers = format!("HTTP/1.1 {}\r\n\
             Content-Length: {}\r\n\
             Content-Type: text/html\r\n\
             Connection: Closed\r\n\r\n", status_code, html.len().to_string());
 
-        writer.write((headers + &html).as_bytes()).expect("Failed to write HTTP response.");
+        writer.write((headers + &html).as_bytes()).unwrap();
     }
 }
 
@@ -161,7 +161,7 @@ impl Handler for DummyHandler {
         match bytes.next() {
             Some(Ok(b'#')) => loop { },
             _ => {
-                writer.write(b"DUMMY\n").expect("Writing failed.");
+                writer.write(b"DUMMY\n").unwrap();
             }
         }
 
@@ -171,7 +171,6 @@ impl Handler for DummyHandler {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
     use std::fs;
     use std::io::{BufReader, BufWriter};
     use std::str::from_utf8;
@@ -197,7 +196,7 @@ mod tests {
 
         handler.handle(reader, writer);
 
-        return from_utf8(&response).expect("Response was invalid UTF-8.").to_string();
+        return from_utf8(&response).unwrap().to_string();
     }
 
     #[test]
@@ -210,7 +209,7 @@ mod tests {
         for (valid_request, body_path) in valid_requests_and_body_paths.iter() {
             let response = handle(valid_request.to_string());
 
-            let expected_body = fs::read_to_string(body_path).expect("Could not find file.");
+            let expected_body = fs::read_to_string(body_path).unwrap();
             let expected_headers = format!("HTTP/1.1 200 OK\r\n\
                 Content-Length: {}\r\n\
                 Content-Type: text/html\r\n\
@@ -235,7 +234,7 @@ mod tests {
             // TODO: Test of invalid UTF-8.
         ];
 
-        let expected_body = fs::read_to_string(ERROR_PAGE_500).expect("Failed to find error page.");
+        let expected_body = fs::read_to_string(ERROR_PAGE_500).unwrap();
         let expected_headers = format!("HTTP/1.1 500 INTERNAL SERVER ERROR\r\n\
                 Content-Length: {}\r\n\
                 Content-Type: text/html\r\n\
@@ -254,7 +253,7 @@ mod tests {
         let valid_request = "GET /unknown_route HTTP/1.1\r\n";
         let response = handle(valid_request.to_string());
 
-        let expected_body = fs::read_to_string(ERROR_PAGE_404).expect("Failed to find error page.");
+        let expected_body = fs::read_to_string(ERROR_PAGE_404).unwrap();
         let expected_headers = format!("HTTP/1.1 404 NOT FOUND\r\n\
                 Content-Length: {}\r\n\
                 Content-Type: text/html\r\n\
