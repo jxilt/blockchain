@@ -5,3 +5,7 @@
 .vscode/
 .idea/
 blockchain.iml
+
+# macOS files.
+.DS_Store
+

@@ -124,7 +124,7 @@ impl <T: DbClient> HttpHandler<T> {
 
     /// Writes an HTTP response for a given status code and page.
     fn write_http_response<W: Write>(mut writer: W, status_code: &str, file_path: &str) -> Result<()> {
-        let html = fs::read_to_string(page_path)?;
+        let html = fs::read_to_string(file_path)?;
 
         let headers = format!("HTTP/1.1 {}\r\n\
             Content-Length: {}\r\n\
