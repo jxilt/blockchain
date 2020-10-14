@@ -98,7 +98,7 @@ impl<T: Handler + Sync + Send + 'static> ServerInternal<T> {
         return Ok(());
     }
 
-    fn handle_tcp_stream<U: Handler + Sync + Send + 'static>(stream: TcpStream, handler: Arc<U>) -> Result<usize, ServerError> {
+    fn handle_tcp_stream<U: Handler + Sync + Send + 'static>(stream: TcpStream, handler: Arc<U>) -> Result<(), ServerError> {
         // We reverse the non-blocking behaviour set at the listener level.
         stream.set_nonblocking(false)
             .map_err(|_e| ServerError { message: "Could not set stream to blocking.".to_string() })?;

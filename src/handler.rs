@@ -11,7 +11,7 @@ const ERROR_PAGE_500: &str = "./src/500.html";
 /// A handler for TCP streams.
 pub trait Handler {
     // Handles incoming connections.
-    fn handle<R: Read, W: Write>(&self, reader: R, writer: W) -> Result<usize, HandlerError>;
+    fn handle<R: Read, W: Write>(&self, reader: R, writer: W) -> Result<(), HandlerError>;
 }
 
 /// A handler for HTTP requests.
@@ -30,7 +30,7 @@ pub struct HandlerError {
 
 impl<T: DbClient> Handler for HttpHandler<T> {
     /// Checks the packet is properly formed, commits it to the database, and writes an ACK to the stream.
-    fn handle<R: Read, W: Write>(&self, reader: R, writer: W) -> Result<usize, HandlerError> {
+    fn handle<R: Read, W: Write>(&self, reader: R, writer: W) -> Result<(), HandlerError> {
         let http_request = HttpHandler::<T>::read_http_request(reader);
 
         return match http_request {
@@ -119,22 +119,22 @@ impl <T: DbClient> HttpHandler<T> {
     }
 
     /// Writes a valid HTTP response.
-    fn write_http_ok_response<W: Write>(writer: W, file_path: &str) -> Result<usize, HandlerError> {
+    fn write_http_ok_response<W: Write>(writer: W, file_path: &str) -> Result<(), HandlerError> {
         return HttpHandler::<T>::write_http_response(writer, "200 OK", file_path);
     }
 
     /// Writes a 500 HTTP response.
-    fn write_http_500_response<W: Write>(writer: W) -> Result<usize, HandlerError> {
+    fn write_http_500_response<W: Write>(writer: W) -> Result<(), HandlerError> {
         return HttpHandler::<T>::write_http_response(writer, "500 INTERNAL SERVER ERROR", ERROR_PAGE_500);
     }
 
     /// Writes a 404 HTTP response.
-    fn write_http_404_response<W: Write>(writer: W) -> Result<usize, HandlerError> {
+    fn write_http_404_response<W: Write>(writer: W) -> Result<(), HandlerError> {
         return HttpHandler::<T>::write_http_response(writer, "404 NOT FOUND", ERROR_PAGE_404);
     }
 
     /// Writes an HTTP response for a given status code and page.
-    fn write_http_response<W: Write>(mut writer: W, status_code: &str, page_path: &str) -> Result<usize, HandlerError> {
+    fn write_http_response<W: Write>(mut writer: W, status_code: &str, page_path: &str) -> Result<(), HandlerError> {
         let html = fs::read_to_string(page_path)
             .map_err(|_e| HandlerError { message: "Could not load page source.".to_string() })?;
 
@@ -143,9 +143,10 @@ impl <T: DbClient> HttpHandler<T> {
             Content-Type: text/html\r\n\
             Connection: Closed\r\n\r\n", status_code, html.len().to_string());
 
-        // TODO: This is a horrendous run-on statement.
-        return Ok(writer.write((headers + &html).as_bytes())
-            .map_err(|_e| HandlerError { message: "Could not write to stream.".to_string() })?);
+        writer.write((headers + &html).as_bytes())
+            .map_err(|_e| HandlerError { message: "Could not write to stream.".to_string() })?;
+
+        return Ok(());
     }
 }
 
@@ -161,7 +162,7 @@ pub struct DummyHandler;
 impl Handler for DummyHandler {
     /// Reads the first byte. Enters an infinite loop if it reads the byte '#', which is useful for
     /// testing parallelism of the server. Otherwise, writes "DUMMY" to the stream.
-    fn handle<R: Read, W: Write>(&self, reader: R, mut writer: W) -> Result<usize, HandlerError> {
+    fn handle<R: Read, W: Write>(&self, reader: R, mut writer: W) -> Result<(), HandlerError> {
         let byte = reader.bytes().next()
             // There were no bytes to read.
             .ok_or(HandlerError { message: "Nothing to read from stream.".to_string() })?
@@ -170,9 +171,13 @@ impl Handler for DummyHandler {
 
         match byte {
             b'#' => loop { },
-            _ => return writer.write(b"DUMMY\n")
-                .map_err(|_e| HandlerError { message: "Could not write to stream.".to_string() })
+            _ => {
+                writer.write(b"DUMMY\n")
+                    .map_err(|_e| HandlerError { message: "Could not write to stream.".to_string() })?;
+            }
         }
+
+        return Ok(());
     }
 }
 
