@@ -1,8 +1,9 @@
+use std::collections::HashMap;
+use std::fs;
 use std::io::{Read, Write};
 use std::str::from_utf8;
-use crate::persistence::{DbClient};
-use std::fs;
-use std::collections::HashMap;
+
+use crate::persistence::DbClient;
 
 const ERROR_PAGE_404: &str = "./src/404.html";
 const ERROR_PAGE_500: &str = "./src/500.html";
@@ -170,12 +171,13 @@ impl Handler for DummyHandler {
 
 #[cfg(test)]
 mod tests {
-    use std::io::{BufReader, BufWriter};
-    use std::str::from_utf8;
-    use crate::persistence::{DummyDbClient};
-    use crate::handler::{Handler, HttpHandler};
     use std::collections::HashMap;
     use std::fs;
+    use std::io::{BufReader, BufWriter};
+    use std::str::from_utf8;
+
+    use crate::handler::{Handler, HttpHandler};
+    use crate::persistence::DummyDbClient;
 
     const ERROR_PAGE_404: &str = "./src/404.html";
     const ERROR_PAGE_500: &str = "./src/500.html";

@@ -1,11 +1,11 @@
 use std::io::{ErrorKind::WouldBlock};
 use std::io::{BufReader, BufWriter};
 use std::net::{TcpListener, TcpStream};
+use std::sync::Arc;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread::spawn;
 
-use crate::handler::{Handler};
-use std::sync::Arc;
+use crate::handler::Handler;
 
 /// The TCP server itself.
 pub struct ServerInternal <T: Handler + Sync + Send + 'static> {
@@ -31,7 +31,7 @@ impl <T: Handler + Sync + Send + 'static> ServerInternal<T> {
         return match self.create_interrupt_channel() {
             Err(e) => Err(e),
             Ok(interrupt_receiver) => {
-                ServerInternal::listen_for_tcp_connections(self, address, interrupt_receiver);
+                ServerInternal::listen_for_tcp_connections(address, interrupt_receiver, &self.handler);
                 Ok(())
             }
         }
@@ -44,7 +44,7 @@ impl <T: Handler + Sync + Send + 'static> ServerInternal<T> {
             Some(sender) => {
                 let maybe_interrupt = sender.send(0);
                 match maybe_interrupt {
-                    Err(e) => Err("Failed to interrupt the TCP listening thread.".to_string()),
+                    Err(_) => Err("Failed to interrupt the TCP listening thread.".to_string()),
                     Ok(_) => {
                         self.interrupt_sender = None;
                         Ok(())
@@ -69,14 +69,13 @@ impl <T: Handler + Sync + Send + 'static> ServerInternal<T> {
 
     /// Listens for and handles incoming TCP connections on the given address, using a separate
     /// thread.
-    // TODO: Pass down handler, not self.
     // TODO: Return results from functions, here and more generally.
-    fn listen_for_tcp_connections(&self, address: &String, interrupt_receiver: Receiver<u8>) {
+    fn listen_for_tcp_connections(address: &String, interrupt_receiver: Receiver<u8>, handler: &Arc<T>) {
         let tcp_listener = TcpListener::bind(address).expect("Failed to bind listener to address.");
         // We set the listener to non-blocking so that we can check for interrupts, below.
         tcp_listener.set_nonblocking(true).expect("Failed to set listener to non-blocking.");
 
-        let handler_arc = Arc::clone(&self.handler);
+        let handler_arc = Arc::clone(handler);
         spawn(move || {
             for maybe_stream in tcp_listener.incoming() {
                 match maybe_stream {
@@ -113,7 +112,7 @@ mod tests {
     use std::net::TcpStream;
     use std::sync::atomic::{AtomicU16, Ordering};
 
-    use crate::handler::{DummyHandler};
+    use crate::handler::DummyHandler;
     use crate::serverinternal::ServerInternal;
 
     // Used to allocate different ports for the listeners across tests.
