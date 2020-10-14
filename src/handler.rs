@@ -34,9 +34,7 @@ impl<T: DbClient> Handler for HttpHandler<T> {
 
                 match maybe_file_path {
                     None => HttpHandler::<T>::write_http_404_response(writer),
-                    Some(file_path) => {
-                        HttpHandler::<T>::write_http_ok_response(writer, file_path)
-                    }
+                    Some(file_path) => HttpHandler::<T>::write_http_ok_response(writer, file_path)
                 }
             }
         };
@@ -59,28 +57,24 @@ impl <T: DbClient> HttpHandler<T> {
 
         let mut token = Vec::<u8>::new();
         loop {
-            match bytes.next() {
+            let byte = bytes.next()
+                // We've reached the end of the bytes without encountering a CRLF.
+                .ok_or("HTTP request start-line not terminated by CRLF.".to_string())?
+                // We've failed to read the byte.
+                .map_err(|e| e.to_string())?;
+
+            match byte {
                 // We've reached the end of the current token.
-                Some(Ok(b' ')) => {
-                    let token_string = from_utf8(&token);
-                    match token_string {
-                        Err(_e) => return Err("Request contained invalid UTF-8.".to_string()),
-                        Ok(valid_token_string) => {
-                            tokens.push(valid_token_string.to_string());
-                            token.clear();
-                        }
-                    }
+                b' ' => {
+                    let token_string = from_utf8(&token).map_err(|e| e.to_string())?;
+                    tokens.push(token_string.to_string());
+                    token.clear();
                 }
 
                 // We've reached the end of the line.
-                Some(Ok(b'\r')) => {
-                    let token_string = from_utf8(&token);
-                    match token_string {
-                        Err(_e) => return Err("Request contained invalid UTF-8.".to_string()),
-                        Ok(valid_token_string) => {
-                            tokens.push(valid_token_string.to_string());
-                        }
-                    }
+                b'\r' => {
+                    let token_string = from_utf8(&token).map_err(|e| e.to_string())?;
+                    tokens.push(token_string.to_string());
 
                     // We check that the next byte is a line-feed.
                     let maybe_line_feed = bytes.next();
@@ -104,13 +98,7 @@ impl <T: DbClient> HttpHandler<T> {
                 }
 
                 // We're mid-token.
-                Some(Ok(byte)) => token.push(byte),
-
-                // We failed to read the byte.
-                Some(Err(_e)) => return Err("Could not read bytes.".to_string()),
-
-                // We've reached the end of the bytes without encountering a CRLF.
-                None => return Err("HTTP request start-line not terminated by CRLF.".to_string())
+                byte => token.push(byte),
             }
         }
     }
