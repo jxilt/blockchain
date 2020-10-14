@@ -6,8 +6,8 @@ use std::str::{from_utf8};
 use crate::servererror::{Result, ServerError};
 use crate::persistence::DbClient;
 
-const ERROR_PAGE_404: &str = "./src/404.html";
-const ERROR_PAGE_500: &str = "./src/500.html";
+const ERROR_PAGE_404: &str = "./src/html/404.html";
+const ERROR_PAGE_500: &str = "./src/html/500.html";
 
 /// A handler for TCP streams.
 pub trait Handler {
@@ -176,16 +176,16 @@ mod tests {
     use crate::handler::{Handler, HttpHandler};
     use crate::persistence::DummyDbClient;
 
-    const ERROR_PAGE_404: &str = "./src/404.html";
-    const ERROR_PAGE_500: &str = "./src/500.html";
+    const ERROR_PAGE_404: &str = "./src/html/404.html";
+    const ERROR_PAGE_500: &str = "./src/html/500.html";
 
     fn handle(request: String) -> String {
         let mut response = Vec::<u8>::new();
 
         let db_client = DummyDbClient {};
         let routes = [
-            ("/".to_string(), "./src/hello_world.html".to_string()),
-            ("/2".to_string(), "./src/hello_world_2.html".to_string())
+            ("/".to_string(), "./src/html/hello_world.html".to_string()),
+            ("/2".to_string(), "./src/html/hello_world_2.html".to_string())
         ].iter().cloned().collect();
         let handler = HttpHandler::new(db_client, routes);
 
@@ -199,15 +199,15 @@ mod tests {
 
     #[test]
     fn handler_accepts_valid_http_requests_and_returns_expected_response() {
-        let valid_requests_and_body_paths = [
-            ("GET / HTTP/1.1\r\n", "./src/hello_world.html"),
-            ("GET /2 HTTP/1.1\r\n", "./src/hello_world_2.html")
+        let valid_requests_and_file_paths = [
+            ("GET / HTTP/1.1\r\n", "./src/html/hello_world.html"),
+            ("GET /2 HTTP/1.1\r\n", "./src/html/hello_world_2.html")
         ];
 
-        for (valid_request, body_path) in valid_requests_and_body_paths.iter() {
+        for (valid_request, file_path) in valid_requests_and_file_paths.iter() {
             let response = handle(valid_request.to_string());
 
-            let expected_body = fs::read_to_string(body_path).unwrap();
+            let expected_body = fs::read_to_string(file_path).unwrap();
             let expected_headers = format!("HTTP/1.1 200 OK\r\n\
                 Content-Length: {}\r\n\
                 Content-Type: text/html\r\n\

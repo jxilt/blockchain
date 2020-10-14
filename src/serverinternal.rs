@@ -27,7 +27,8 @@ impl<T: Handler + Sync + Send + 'static> ServerInternal<T> {
     }
 
     /// Sets up an interrupt to kill the main server thread as needed. Then listens for and handles
-    /// incoming TCP connections on the given address, using a separate thread.
+    /// incoming TCP connections on the given address, using a separate thread. A given server can
+    /// only listen once at a time.
     pub fn listen(&mut self, address: &String) -> Result<()> {
         let interrupt_receiver = self.create_interrupt_channel()?;
         return ServerInternal::listen_for_tcp_connections(address, interrupt_receiver, &self.handler);

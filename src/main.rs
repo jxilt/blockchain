@@ -15,20 +15,19 @@ const DEFAULT_PORT: &str = "10005";
 
 /// Listens for incoming packets until the user exits the program.
 /// Expects two env arguments: <program name, port>.
-pub fn main() {
+pub fn main() -> Result<()> {
     let args = env::args();
-    let port = extract_port_from_args(args)
-        .expect("Could not parse port, or flag '-p' provided without corresponding port.");
+    let port = extract_port_from_args(args)?;
     let address = format!("0.0.0.0:{}", port);
 
-    let routes = [
-        ("/".to_string(), "./src/hello_world.html".to_string())
-    ].iter().cloned().collect();
-    let mut server = Server::new(routes);
+    let mut server = Server::new();
+    server.register("/".to_string(), "./src/html/hello_world.html".to_string());
+    server.start(&address)?;
 
-    server.listen(&address).expect("Server could not listen on address.");
-    loop_until_exit_requested(stdin().lock()).expect("Failed to read input.");
-    server.stop_listening().expect("Server could not stop listening.");
+    loop_until_exit_requested(stdin().lock())?;
+    server.stop()?;
+
+    return Ok(());
 }
 
 /// Returns a localhost address based on the port provided using the '-p' flag.
