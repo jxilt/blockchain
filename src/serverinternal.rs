@@ -60,7 +60,6 @@ impl<T: Handler + Sync + Send + 'static> ServerInternal<T> {
 
     /// Listens for and handles incoming TCP connections on the given address, using a separate
     /// thread.
-    // TODO: Return results from functions, here and more generally.
     fn listen_for_tcp_connections(address: &String, interrupt_receiver: Receiver<u8>, handler: &Arc<T>) -> Result<()> {
         let tcp_listener = TcpListener::bind(address)?;
         // We set the listener to non-blocking so that we can check for interrupts, below.
