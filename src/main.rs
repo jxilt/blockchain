@@ -12,7 +12,7 @@ mod persistence;
 const DEFAULT_PORT: &str = "10005";
 
 /// Errors related to the main method.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct MainError {
     message: String
 }

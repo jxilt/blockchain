@@ -23,7 +23,7 @@ pub struct HttpHandler<T: DbClient> {
 }
 
 /// Errors related to the handler.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct HandlerError {
     pub(crate) message: String
 }

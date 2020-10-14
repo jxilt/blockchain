@@ -17,7 +17,7 @@ pub struct ServerInternal<T: Handler + Sync + Send + 'static> {
 }
 
 /// Errors related to the server logic.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct ServerError {
     message: String
 }
