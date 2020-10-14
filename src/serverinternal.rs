@@ -46,14 +46,13 @@ impl<T: Handler + Sync + Send + 'static> ServerInternal<T> {
     /// Creates a channel between the main thread and the TCP listening thread, in order to allow
     /// us to interrupt the latter.
     fn create_interrupt_channel(&mut self) -> Result<Receiver<u8>> {
-        return match &self.interrupt_sender {
-            Some(_sender) => Err(ServerError { message: "Server is already listening.".to_string() }),
-            None => {
-                let (interrupt_sender, interrupt_receiver) = channel::<u8>();
-                self.interrupt_sender = Some(interrupt_sender);
-                Ok(interrupt_receiver)
-            }
-        };
+        if self.interrupt_sender.is_some() {
+           return Err(ServerError { message: "Server is already listening.".to_string() });
+        }
+
+        let (interrupt_sender, interrupt_receiver) = channel::<u8>();
+        self.interrupt_sender = Some(interrupt_sender);
+        return Ok(interrupt_receiver);
     }
 
     /// Listens for and handles incoming TCP connections on the given address, using a separate
