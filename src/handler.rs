@@ -24,7 +24,7 @@ pub struct HttpHandler<T: DbClient> {
 }
 
 impl<T: DbClient> Handler for HttpHandler<T> {
-    /// Checks the packet is properly formed, commits it to the database, and writes an ACK to the stream.
+    /// Reads the HTTP request, handles it and writes an HTTP response.
     fn handle<R: Read, W: Write>(&self, reader: R, writer: W) -> Result<()> {
         let http_request = HttpHandler::<T>::read_http_request(reader);
 
@@ -53,34 +53,32 @@ impl <T: DbClient> HttpHandler<T> {
     /// Extracts the method, URI and version from an incoming HTTP request.
     // TODO: Read headers, check post-header line, get message body.
     fn read_http_request<R: Read>(reader: R) -> Result<HttpRequest> {
-        let mut bytes = reader.bytes();
+        let mut incoming_bytes = reader.bytes();
+        let mut current_token = Vec::<u8>::new();
         let mut tokens = Vec::<String>::new();
-        let mut token = Vec::<u8>::new();
 
         loop {
-            let byte = bytes.next()
+            let current_byte = incoming_bytes.next()
                 // We've reached the end of the bytes without encountering a CRLF.
-                .ok_or(ServerError { message: "HTTP request start-line not terminated by CRLF.".to_string() })?
+                .ok_or(ServerError { message: "HTTP request ended without CRLF.".to_string() })?
                 // We've failed to read the byte.
                 ?;
 
-            match byte {
+            match current_byte {
                 // We've reached the end of the current token.
                 b' ' => {
-                    let token_string = from_utf8(&token)?;
-
+                    let token_string = from_utf8(&current_token)?;
                     tokens.push(token_string.to_string());
-                    token.clear();
+                    current_token.clear();
                 }
 
                 // We've reached the end of the line.
                 b'\r' => {
-                    let token_string = from_utf8(&token)?;
-
+                    let token_string = from_utf8(&current_token)?;
                     tokens.push(token_string.to_string());
 
                     // We check that the next byte is a line-feed.
-                    let maybe_line_feed = bytes.next()
+                    let maybe_line_feed = incoming_bytes.next()
                         // There is no next byte.
                         .ok_or(ServerError { message: "HTTP request start-line not terminated by CRLF.".to_string() })?
                         // We've failed to read the byte.
@@ -93,20 +91,18 @@ impl <T: DbClient> HttpHandler<T> {
                                 return Err(ServerError { message: "Request line does not have three tokens.".to_string() })
                             }
 
-                            let http_request = HttpRequest {
+                            Ok(HttpRequest {
                                 method: tokens[0].to_string(),
                                 request_uri: tokens[1].to_string(),
                                 http_version: tokens[2].to_string(),
-                            };
-
-                            Ok(http_request)
+                            })
                         }
-                        _ => Err(ServerError { message: "HTTP request start-line not terminated by CRLF.".to_string() })
+                        _ => Err(ServerError { message: "HTTP request start-line not terminated by LF.".to_string() })
                     };
                 }
 
                 // We're mid-token.
-                other_byte => token.push(other_byte),
+                any_other_byte => current_token.push(any_other_byte),
             }
         }
     }
@@ -127,7 +123,7 @@ impl <T: DbClient> HttpHandler<T> {
     }
 
     /// Writes an HTTP response for a given status code and page.
-    fn write_http_response<W: Write>(mut writer: W, status_code: &str, page_path: &str) -> Result<()> {
+    fn write_http_response<W: Write>(mut writer: W, status_code: &str, file_path: &str) -> Result<()> {
         let html = fs::read_to_string(page_path)?;
 
         let headers = format!("HTTP/1.1 {}\r\n\

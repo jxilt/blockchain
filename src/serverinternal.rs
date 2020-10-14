@@ -30,17 +30,14 @@ impl<T: Handler + Sync + Send + 'static> ServerInternal<T> {
     /// incoming TCP connections on the given address, using a separate thread.
     pub fn listen(&mut self, address: &String) -> Result<()> {
         let interrupt_receiver = self.create_interrupt_channel()?;
-        ServerInternal::listen_for_tcp_connections(address, interrupt_receiver, &self.handler)?;
-        Ok(())
+        return ServerInternal::listen_for_tcp_connections(address, interrupt_receiver, &self.handler);
     }
 
     /// Stops listening for TCP connections.
     pub fn stop_listening(&mut self) -> Result<()> {
         let interrupt_sender = self.interrupt_sender.as_ref()
             .ok_or(ServerError { message: "No channel exists to interrupt listening thread.".to_string() })?;
-
         interrupt_sender.send(0)?;
-
         self.interrupt_sender = None;
         return Ok(());
     }
@@ -49,7 +46,7 @@ impl<T: Handler + Sync + Send + 'static> ServerInternal<T> {
     /// us to interrupt the latter.
     fn create_interrupt_channel(&mut self) -> Result<Receiver<u8>> {
         return match &self.interrupt_sender {
-            Some(_sender) => Err(ServerError { message: "Could not set stream to blocking.".to_string() }),
+            Some(_sender) => Err(ServerError { message: "Server is already listening.".to_string() }),
             None => {
                 let (interrupt_sender, interrupt_receiver) = channel::<u8>();
                 self.interrupt_sender = Some(interrupt_sender);
@@ -65,6 +62,7 @@ impl<T: Handler + Sync + Send + 'static> ServerInternal<T> {
         // We set the listener to non-blocking so that we can check for interrupts, below.
         tcp_listener.set_nonblocking(true)?;
 
+        // We clone the Arc to avoid capturing a reference to self in the thread we spawn.
         let handler_arc = Arc::clone(handler);
         spawn(move || {
             for maybe_stream in tcp_listener.incoming() {
@@ -81,6 +79,7 @@ impl<T: Handler + Sync + Send + 'static> ServerInternal<T> {
                             break;
                         }
                     }
+                    // We choose to panic, instead of passing results back to the main thread.
                     Err(e) => panic!(e)
                 }
             }
