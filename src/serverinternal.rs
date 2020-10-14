@@ -39,8 +39,7 @@ impl<T: Handler + Sync + Send + 'static> ServerInternal<T> {
         let interrupt_sender = self.interrupt_sender.as_ref()
             .ok_or(ServerError { message: "No channel exists to interrupt listening thread.".to_string() })?;
 
-        interrupt_sender.send(0)
-            .map_err(|_e| ServerError { message: "Could not interrupt listening thread.".to_string() })?;
+        interrupt_sender.send(0)?;
 
         self.interrupt_sender = None;
         return Ok(());
@@ -63,11 +62,9 @@ impl<T: Handler + Sync + Send + 'static> ServerInternal<T> {
     /// thread.
     // TODO: Return results from functions, here and more generally.
     fn listen_for_tcp_connections(address: &String, interrupt_receiver: Receiver<u8>, handler: &Arc<T>) -> Result<()> {
-        let tcp_listener = TcpListener::bind(address)
-            .map_err(|_e| ServerError { message: "Could not bind listener to address.".to_string() })?;
+        let tcp_listener = TcpListener::bind(address)?;
         // We set the listener to non-blocking so that we can check for interrupts, below.
-        tcp_listener.set_nonblocking(true)
-            .map_err(|_e| ServerError { message: "Could not set stream to non-blocking.".to_string() })?;
+        tcp_listener.set_nonblocking(true)?;
 
         let handler_arc = Arc::clone(handler);
         spawn(move || {
@@ -95,13 +92,11 @@ impl<T: Handler + Sync + Send + 'static> ServerInternal<T> {
 
     fn handle_tcp_stream<U: Handler + Sync + Send + 'static>(stream: TcpStream, handler: Arc<U>) -> Result<()> {
         // We reverse the non-blocking behaviour set at the listener level.
-        stream.set_nonblocking(false)
-            .map_err(|_e| ServerError { message: "Could not set stream to blocking.".to_string() })?;
+        stream.set_nonblocking(false)?;
 
         let reader = BufReader::new(&stream);
         let writer = BufWriter::new(&stream);
-        return handler.handle(reader, writer)
-            .map_err(|e| ServerError { message: e.message });
+        return handler.handle(reader, writer);
     }
 }
 

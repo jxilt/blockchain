@@ -62,7 +62,7 @@ impl <T: DbClient> HttpHandler<T> {
                 // We've reached the end of the bytes without encountering a CRLF.
                 .ok_or(ServerError { message: "HTTP request start-line not terminated by CRLF.".to_string() })?
                 // We've failed to read the byte.
-                .map_err(|_e| ServerError { message: "Could not read from stream.".to_string() })?;
+                ?;
 
             match byte {
                 // We've reached the end of the current token.
@@ -84,7 +84,7 @@ impl <T: DbClient> HttpHandler<T> {
                         // There is no next byte.
                         .ok_or(ServerError { message: "HTTP request start-line not terminated by CRLF.".to_string() })?
                         // We've failed to read the byte.
-                        .map_err(|_e| ServerError { message: "Could not read from stream.".to_string() })?;
+                        ?;
 
                     return match maybe_line_feed {
                         // The start-line is correctly terminated by a CRLF.
@@ -128,16 +128,14 @@ impl <T: DbClient> HttpHandler<T> {
 
     /// Writes an HTTP response for a given status code and page.
     fn write_http_response<W: Write>(mut writer: W, status_code: &str, page_path: &str) -> Result<()> {
-        let html = fs::read_to_string(page_path)
-            .map_err(|_e| ServerError { message: "Could not load page source.".to_string() })?;
+        let html = fs::read_to_string(page_path)?;
 
         let headers = format!("HTTP/1.1 {}\r\n\
             Content-Length: {}\r\n\
             Content-Type: text/html\r\n\
             Connection: Closed\r\n\r\n", status_code, html.len().to_string());
 
-        writer.write((headers + &html).as_bytes())
-            .map_err(|_e| ServerError { message: "Could not write to stream.".to_string() })?;
+        writer.write((headers + &html).as_bytes())?;
 
         return Ok(());
     }
@@ -160,13 +158,12 @@ impl Handler for DummyHandler {
             // There were no bytes to read.
             .ok_or(ServerError { message: "Nothing to read from stream.".to_string() })?
             // We've failed to read the byte.
-            .map_err(|_e| ServerError { message: "Could not read from stream.".to_string() })?;
+            ?;
 
         match byte {
             b'#' => loop { },
             _ => {
-                writer.write(b"DUMMY\n")
-                    .map_err(|_e| ServerError { message: "Could not write to stream.".to_string() })?;
+                writer.write(b"DUMMY\n")?;
             }
         }
 

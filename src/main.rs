@@ -51,7 +51,7 @@ fn extract_port_from_args(mut args: Args) -> Result<String> {
     let port = args.next()
         .ok_or(ServerError { message: "No argument passed after '-p' flag.".to_string() })?;
 
-    port.parse::<i32>().map_err(|_e| ServerError { message: "Could not parse port value.".to_string() })?;
+    port.parse::<i32>()?;
     println!("Using provided port of {}.", port);
     return Ok(port);
 }
@@ -64,8 +64,7 @@ fn loop_until_exit_requested<R: BufRead>(mut reader: R) -> Result<()> {
         println!("Type 'exit' to exit.");
         maybe_exit.clear();
 
-        reader.read_line(&mut maybe_exit)
-            .map_err(|_e| ServerError { message: "Could not read from stream.".to_string() })?;
+        reader.read_line(&mut maybe_exit)?;
 
         if maybe_exit.trim() == "exit" {
             return Ok(());
