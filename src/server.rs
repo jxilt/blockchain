@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::handler::HttpHandler;
 use crate::persistence::InMemoryDbClient;
-use crate::serverinternal::ServerInternal;
+use crate::serverinternal::{ServerError, ServerInternal};
 
 /// A TCP server that wraps the ServerInternal class, to allow different request handlers to be
 /// injected when testing the latter.
@@ -23,12 +23,12 @@ impl Server {
 
     /// Starts listening for TCP connections at the given address on a separate thread, and handles
     /// the incoming connections. A single server can only listen once at a time.
-    pub fn listen(&mut self, address: &String) -> Result<(), String> {
+    pub fn listen(&mut self, address: &String) -> Result<(), ServerError> {
         return self.server_internal.listen(address);
     }
 
     /// Stops listening for TCP connections.
-    pub fn stop_listening(&mut self) -> Result<(), String> {
+    pub fn stop_listening(&mut self) -> Result<(), ServerError> {
         return self.server_internal.stop_listening();
     }
 }

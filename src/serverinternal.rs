@@ -1,4 +1,4 @@
-use std::io::{ErrorKind::WouldBlock, Error};
+use std::io::{ErrorKind::WouldBlock};
 use std::io::{BufReader, BufWriter};
 use std::net::{TcpListener, TcpStream};
 use std::sync::Arc;
@@ -16,6 +16,12 @@ pub struct ServerInternal<T: Handler + Sync + Send + 'static> {
     handler: Arc<T>,
 }
 
+/// Errors related to the server logic.
+#[derive(Debug, Clone)]
+pub struct ServerError {
+    message: String
+}
+
 impl<T: Handler + Sync + Send + 'static> ServerInternal<T> {
     pub fn new(handler: T) -> ServerInternal<T> {
         ServerInternal {
@@ -27,25 +33,29 @@ impl<T: Handler + Sync + Send + 'static> ServerInternal<T> {
 
     /// Sets up an interrupt to kill the main server thread as needed. Then listens for and handles
     /// incoming TCP connections on the given address, using a separate thread.
-    pub fn listen(&mut self, address: &String) -> Result<(), String> {
+    pub fn listen(&mut self, address: &String) -> Result<(), ServerError> {
         let interrupt_receiver = self.create_interrupt_channel()?;
-        ServerInternal::listen_for_tcp_connections(address, interrupt_receiver, &self.handler).map_err(|e| e.to_string())?;
+        ServerInternal::listen_for_tcp_connections(address, interrupt_receiver, &self.handler)?;
         Ok(())
     }
 
     /// Stops listening for TCP connections.
-    pub fn stop_listening(&mut self) -> Result<(), String> {
-        let interrupt_sender = self.interrupt_sender.as_ref().ok_or("The server is not currently listening.")?;
-        interrupt_sender.send(0).map_err(|e| e.to_string())?;
+    pub fn stop_listening(&mut self) -> Result<(), ServerError> {
+        let interrupt_sender = self.interrupt_sender.as_ref()
+            .ok_or(ServerError { message: "No channel exists to interrupt listening thread.".to_string() })?;
+
+        interrupt_sender.send(0)
+            .map_err(|_e| ServerError { message: "Could not interrupt listening thread.".to_string() })?;
+
         self.interrupt_sender = None;
         return Ok(());
     }
 
     /// Creates a channel between the main thread and the TCP listening thread, in order to allow
     /// us to interrupt the latter.
-    fn create_interrupt_channel(&mut self) -> Result<Receiver<u8>, String> {
+    fn create_interrupt_channel(&mut self) -> Result<Receiver<u8>, ServerError> {
         return match &self.interrupt_sender {
-            Some(_sender) => Err("The server is already listening.".to_string()),
+            Some(_sender) => Err(ServerError { message: "Could not set stream to blocking.".to_string() }),
             None => {
                 let (interrupt_sender, interrupt_receiver) = channel::<u8>();
                 self.interrupt_sender = Some(interrupt_sender);
@@ -57,10 +67,12 @@ impl<T: Handler + Sync + Send + 'static> ServerInternal<T> {
     /// Listens for and handles incoming TCP connections on the given address, using a separate
     /// thread.
     // TODO: Return results from functions, here and more generally.
-    fn listen_for_tcp_connections(address: &String, interrupt_receiver: Receiver<u8>, handler: &Arc<T>) -> Result<(), Error> {
-        let tcp_listener = TcpListener::bind(address)?;
+    fn listen_for_tcp_connections(address: &String, interrupt_receiver: Receiver<u8>, handler: &Arc<T>) -> Result<(), ServerError> {
+        let tcp_listener = TcpListener::bind(address)
+            .map_err(|_e| ServerError { message: "Could not bind listener to address.".to_string() })?;
         // We set the listener to non-blocking so that we can check for interrupts, below.
-        tcp_listener.set_nonblocking(true)?;
+        tcp_listener.set_nonblocking(true)
+            .map_err(|_e| ServerError { message: "Could not set stream to non-blocking.".to_string() })?;
 
         let handler_arc = Arc::clone(handler);
         spawn(move || {
@@ -86,12 +98,15 @@ impl<T: Handler + Sync + Send + 'static> ServerInternal<T> {
         return Ok(());
     }
 
-    fn handle_tcp_stream<U: Handler + Sync + Send + 'static>(stream: TcpStream, handler: Arc<U>) -> Result<(), Error> {
+    fn handle_tcp_stream<U: Handler + Sync + Send + 'static>(stream: TcpStream, handler: Arc<U>) -> Result<usize, ServerError> {
         // We reverse the non-blocking behaviour set at the listener level.
-        stream.set_nonblocking(false)?;
+        stream.set_nonblocking(false)
+            .map_err(|_e| ServerError { message: "Could not set stream to blocking.".to_string() })?;
+
         let reader = BufReader::new(&stream);
         let writer = BufWriter::new(&stream);
-        return Ok(handler.handle(reader, writer));
+        return handler.handle(reader, writer)
+            .map_err(|e| ServerError { message: e.message });
     }
 }
 

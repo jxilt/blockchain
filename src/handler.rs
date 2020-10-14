@@ -11,7 +11,7 @@ const ERROR_PAGE_500: &str = "./src/500.html";
 /// A handler for TCP streams.
 pub trait Handler {
     // Handles incoming connections.
-    fn handle<R: Read, W: Write>(&self, reader: R, writer: W);
+    fn handle<R: Read, W: Write>(&self, reader: R, writer: W) -> Result<usize, HandlerError>;
 }
 
 /// A handler for HTTP requests.
@@ -22,12 +22,18 @@ pub struct HttpHandler<T: DbClient> {
     routes: HashMap<String, String>
 }
 
+/// Errors related to the handler.
+#[derive(Debug, Clone)]
+pub struct HandlerError {
+    pub(crate) message: String
+}
+
 impl<T: DbClient> Handler for HttpHandler<T> {
     /// Checks the packet is properly formed, commits it to the database, and writes an ACK to the stream.
-    fn handle<R: Read, W: Write>(&self, reader: R, writer: W) {
+    fn handle<R: Read, W: Write>(&self, reader: R, writer: W) -> Result<usize, HandlerError> {
         let http_request = HttpHandler::<T>::read_http_request(reader);
 
-        match http_request {
+        return match http_request {
             Err(_e) => HttpHandler::<T>::write_http_500_response(writer),
             Ok(http_request) => {
                 let maybe_file_path = self.routes.get(&http_request.request_uri);
@@ -51,38 +57,47 @@ impl <T: DbClient> HttpHandler<T> {
 
     /// Extracts the method, URI and version from an incoming HTTP request.
     // TODO: Read headers, check post-header line, get message body.
-    fn read_http_request<R: Read>(reader: R) -> Result<HttpRequest, String> {
-        let mut tokens = Vec::<String>::new();
+    fn read_http_request<R: Read>(reader: R) -> Result<HttpRequest, HandlerError> {
         let mut bytes = reader.bytes();
-
+        let mut tokens = Vec::<String>::new();
         let mut token = Vec::<u8>::new();
+
         loop {
             let byte = bytes.next()
                 // We've reached the end of the bytes without encountering a CRLF.
-                .ok_or("HTTP request start-line not terminated by CRLF.".to_string())?
+                .ok_or(HandlerError { message: "HTTP request start-line not terminated by CRLF.".to_string() })?
                 // We've failed to read the byte.
-                .map_err(|e| e.to_string())?;
+                .map_err(|_e| HandlerError { message: "Could not read from stream.".to_string() })?;
 
             match byte {
                 // We've reached the end of the current token.
                 b' ' => {
-                    let token_string = from_utf8(&token).map_err(|e| e.to_string())?;
+                    let token_string = from_utf8(&token)
+                        .map_err(|_e| HandlerError { message: "Request contained invalid UTF-8.".to_string() })?;
+
                     tokens.push(token_string.to_string());
                     token.clear();
                 }
 
                 // We've reached the end of the line.
                 b'\r' => {
-                    let token_string = from_utf8(&token).map_err(|e| e.to_string())?;
+                    let token_string = from_utf8(&token)
+                        .map_err(|_e| HandlerError { message: "Request contained invalid UTF-8.".to_string() })?;
+
                     tokens.push(token_string.to_string());
 
                     // We check that the next byte is a line-feed.
-                    let maybe_line_feed = bytes.next();
+                    let maybe_line_feed = bytes.next()
+                        // There is no next byte.
+                        .ok_or(HandlerError { message: "HTTP request start-line not terminated by CRLF.".to_string() })?
+                        // We've failed to read the byte.
+                        .map_err(|_e| HandlerError { message: "Could not read from stream.".to_string() })?;
+
                     return match maybe_line_feed {
                         // The start-line is correctly terminated by a CRLF.
-                        Some(Ok(b'\n')) => {
+                        b'\n' => {
                             if tokens.len() != 3 {
-                                return Err("Malformed request line.".to_string());
+                                return Err(HandlerError { message: "Request line does not have three tokens.".to_string() })
                             }
 
                             let http_request = HttpRequest {
@@ -93,41 +108,44 @@ impl <T: DbClient> HttpHandler<T> {
 
                             Ok(http_request)
                         }
-                        _ => Err("HTTP request start-line not terminated by CRLF.".to_string())
+                        _ => Err(HandlerError { message: "HTTP request start-line not terminated by CRLF.".to_string() })
                     };
                 }
 
                 // We're mid-token.
-                byte => token.push(byte),
+                other_byte => token.push(other_byte),
             }
         }
     }
 
     /// Writes a valid HTTP response.
-    fn write_http_ok_response<W: Write>(writer: W, file_path: &str) {
-        HttpHandler::<T>::write_http_response(writer, "200 OK", file_path);
+    fn write_http_ok_response<W: Write>(writer: W, file_path: &str) -> Result<usize, HandlerError> {
+        return HttpHandler::<T>::write_http_response(writer, "200 OK", file_path);
     }
 
     /// Writes a 500 HTTP response.
-    fn write_http_500_response<W: Write>(writer: W) {
-        HttpHandler::<T>::write_http_response(writer, "500 INTERNAL SERVER ERROR", ERROR_PAGE_500);
+    fn write_http_500_response<W: Write>(writer: W) -> Result<usize, HandlerError> {
+        return HttpHandler::<T>::write_http_response(writer, "500 INTERNAL SERVER ERROR", ERROR_PAGE_500);
     }
 
     /// Writes a 404 HTTP response.
-    fn write_http_404_response<W: Write>(writer: W) {
-        HttpHandler::<T>::write_http_response(writer, "404 NOT FOUND", ERROR_PAGE_404);
+    fn write_http_404_response<W: Write>(writer: W) -> Result<usize, HandlerError> {
+        return HttpHandler::<T>::write_http_response(writer, "404 NOT FOUND", ERROR_PAGE_404);
     }
 
     /// Writes an HTTP response for a given status code and page.
-    fn write_http_response<W: Write>(mut writer: W, status_code: &str, page_path: &str) {
-        let html = fs::read_to_string(page_path).unwrap();
+    fn write_http_response<W: Write>(mut writer: W, status_code: &str, page_path: &str) -> Result<usize, HandlerError> {
+        let html = fs::read_to_string(page_path)
+            .map_err(|_e| HandlerError { message: "Could not load page source.".to_string() })?;
 
         let headers = format!("HTTP/1.1 {}\r\n\
             Content-Length: {}\r\n\
             Content-Type: text/html\r\n\
             Connection: Closed\r\n\r\n", status_code, html.len().to_string());
 
-        writer.write((headers + &html).as_bytes()).unwrap();
+        // TODO: This is a horrendous run-on statement.
+        return Ok(writer.write((headers + &html).as_bytes())
+            .map_err(|_e| HandlerError { message: "Could not write to stream.".to_string() })?);
     }
 }
 
@@ -143,17 +161,18 @@ pub struct DummyHandler;
 impl Handler for DummyHandler {
     /// Reads the first byte. Enters an infinite loop if it reads the byte '#', which is useful for
     /// testing parallelism of the server. Otherwise, writes "DUMMY" to the stream.
-    fn handle<R: Read, W: Write>(&self, reader: R, mut writer: W) {
-        let mut bytes = reader.bytes();
+    fn handle<R: Read, W: Write>(&self, reader: R, mut writer: W) -> Result<usize, HandlerError> {
+        let byte = reader.bytes().next()
+            // There were no bytes to read.
+            .ok_or(HandlerError { message: "Nothing to read from stream.".to_string() })?
+            // We've failed to read the byte.
+            .map_err(|_e| HandlerError { message: "Could not read from stream.".to_string() })?;
 
-        match bytes.next() {
-            Some(Ok(b'#')) => loop { },
-            _ => {
-                writer.write(b"DUMMY\n").unwrap();
-            }
+        match byte {
+            b'#' => loop { },
+            _ => return writer.write(b"DUMMY\n")
+                .map_err(|_e| HandlerError { message: "Could not write to stream.".to_string() })
         }
-
-        ()
     }
 }
 
@@ -182,7 +201,7 @@ mod tests {
         let reader = BufReader::new(request.as_bytes());
         let writer = BufWriter::new(&mut response);
 
-        handler.handle(reader, writer);
+        handler.handle(reader, writer).unwrap();
 
         return from_utf8(&response).unwrap().to_string();
     }

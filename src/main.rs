@@ -1,6 +1,6 @@
 use std::env;
 use std::env::Args;
-use std::io::{BufRead, stdin, Error};
+use std::io::{BufRead, Error, stdin};
 
 use crate::server::Server;
 
@@ -10,6 +10,12 @@ mod handler;
 mod persistence;
 
 const DEFAULT_PORT: &str = "10005";
+
+/// Errors related to the main method.
+#[derive(Debug, Clone)]
+pub struct MainError {
+    message: String
+}
 
 /// Listens for incoming packets until the user exits the program.
 /// Expects two env arguments: <program name, port>.
@@ -30,7 +36,7 @@ pub fn main() {
 }
 
 /// Returns a localhost address based on the port provided using the '-p' flag.
-fn extract_port_from_args(mut args: Args) -> Result<String, String> {
+fn extract_port_from_args(mut args: Args) -> Result<String, MainError> {
     loop {
         match args.next() {
             None => {
@@ -46,8 +52,10 @@ fn extract_port_from_args(mut args: Args) -> Result<String, String> {
     }
 
     // The port should be the argument following the '-p' flag.
-    let port = args.next().ok_or("Flag '-p' used but no port provided.")?;
-    port.parse::<i32>().map_err(|e| e.to_string())?;
+    let port = args.next()
+        .ok_or(MainError { message: "No argument passed after '-p' flag.".to_string() })?;
+
+    port.parse::<i32>().map_err(|_e| MainError { message: "Could not parse port value.".to_string() })?;
     println!("Using provided port of {}.", port);
     return Ok(port);
 }
