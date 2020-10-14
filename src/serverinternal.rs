@@ -9,12 +9,12 @@ use crate::servererror::{Result, ServerError};
 use crate::handler::Handler;
 
 /// The TCP server itself.
-pub struct ServerInternal<T: Handler + Sync + Send + 'static> {
+pub struct ServerInternal<H: Handler> {
     // Used to interrupt the TCP listening thread.
     interrupt_sender: Option<Sender<u8>>,
     // Uses to handle requests. An Arc is used to allow the handler to be shared across responder
     // threads.
-    handler: Arc<T>,
+    handler: Arc<H>,
 }
 
 impl<T: Handler + Sync + Send + 'static> ServerInternal<T> {
@@ -89,7 +89,7 @@ impl<T: Handler + Sync + Send + 'static> ServerInternal<T> {
         return Ok(());
     }
 
-    fn handle_tcp_stream<U: Handler + Sync + Send + 'static>(stream: TcpStream, handler: Arc<U>) -> Result<()> {
+    fn handle_tcp_stream<H: Handler>(stream: TcpStream, handler: Arc<H>) -> Result<()> {
         // We reverse the non-blocking behaviour set at the listener level.
         stream.set_nonblocking(false)?;
 
