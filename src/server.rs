@@ -2,7 +2,8 @@ use std::collections::HashMap;
 
 use crate::handler::HttpHandler;
 use crate::persistence::InMemoryDbClient;
-use crate::serverinternal::{ServerError, ServerInternal};
+use crate::servererror::ServerError;
+use crate::serverinternal::ServerInternal;
 
 /// A TCP server that wraps the ServerInternal class, to allow different request handlers to be
 /// injected when testing the latter.

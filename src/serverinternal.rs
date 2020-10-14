@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread::spawn;
 
+use crate::servererror::{Result, ServerError};
 use crate::handler::Handler;
 
 /// The TCP server itself.
@@ -14,12 +15,6 @@ pub struct ServerInternal<T: Handler + Sync + Send + 'static> {
     // Uses to handle requests. An Arc is used to allow the handler to be shared across responder
     // threads.
     handler: Arc<T>,
-}
-
-/// Errors related to the server logic.
-#[derive(Debug)]
-pub struct ServerError {
-    message: String
 }
 
 impl<T: Handler + Sync + Send + 'static> ServerInternal<T> {
@@ -33,14 +28,14 @@ impl<T: Handler + Sync + Send + 'static> ServerInternal<T> {
 
     /// Sets up an interrupt to kill the main server thread as needed. Then listens for and handles
     /// incoming TCP connections on the given address, using a separate thread.
-    pub fn listen(&mut self, address: &String) -> Result<(), ServerError> {
+    pub fn listen(&mut self, address: &String) -> Result<()> {
         let interrupt_receiver = self.create_interrupt_channel()?;
         ServerInternal::listen_for_tcp_connections(address, interrupt_receiver, &self.handler)?;
         Ok(())
     }
 
     /// Stops listening for TCP connections.
-    pub fn stop_listening(&mut self) -> Result<(), ServerError> {
+    pub fn stop_listening(&mut self) -> Result<()> {
         let interrupt_sender = self.interrupt_sender.as_ref()
             .ok_or(ServerError { message: "No channel exists to interrupt listening thread.".to_string() })?;
 
@@ -53,7 +48,7 @@ impl<T: Handler + Sync + Send + 'static> ServerInternal<T> {
 
     /// Creates a channel between the main thread and the TCP listening thread, in order to allow
     /// us to interrupt the latter.
-    fn create_interrupt_channel(&mut self) -> Result<Receiver<u8>, ServerError> {
+    fn create_interrupt_channel(&mut self) -> Result<Receiver<u8>> {
         return match &self.interrupt_sender {
             Some(_sender) => Err(ServerError { message: "Could not set stream to blocking.".to_string() }),
             None => {
@@ -67,7 +62,7 @@ impl<T: Handler + Sync + Send + 'static> ServerInternal<T> {
     /// Listens for and handles incoming TCP connections on the given address, using a separate
     /// thread.
     // TODO: Return results from functions, here and more generally.
-    fn listen_for_tcp_connections(address: &String, interrupt_receiver: Receiver<u8>, handler: &Arc<T>) -> Result<(), ServerError> {
+    fn listen_for_tcp_connections(address: &String, interrupt_receiver: Receiver<u8>, handler: &Arc<T>) -> Result<()> {
         let tcp_listener = TcpListener::bind(address)
             .map_err(|_e| ServerError { message: "Could not bind listener to address.".to_string() })?;
         // We set the listener to non-blocking so that we can check for interrupts, below.
@@ -98,7 +93,7 @@ impl<T: Handler + Sync + Send + 'static> ServerInternal<T> {
         return Ok(());
     }
 
-    fn handle_tcp_stream<U: Handler + Sync + Send + 'static>(stream: TcpStream, handler: Arc<U>) -> Result<(), ServerError> {
+    fn handle_tcp_stream<U: Handler + Sync + Send + 'static>(stream: TcpStream, handler: Arc<U>) -> Result<()> {
         // We reverse the non-blocking behaviour set at the listener level.
         stream.set_nonblocking(false)
             .map_err(|_e| ServerError { message: "Could not set stream to blocking.".to_string() })?;
