@@ -5,8 +5,8 @@ use std::sync::Arc;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread::spawn;
 
-use crate::servererror::{Result, ServerError};
 use crate::handler::Handler;
+use crate::servererror::{Result, ServerError};
 
 /// The TCP server itself.
 pub struct ServerInternal<H: Handler> {
@@ -29,7 +29,7 @@ impl<T: Handler + Sync + Send + 'static> ServerInternal<T> {
     /// Sets up an interrupt to kill the main server thread as needed. Then listens for and handles
     /// incoming TCP connections on the given address, using a separate thread. A given server can
     /// only listen once at a time.
-    pub fn listen(&mut self, address: &String) -> Result<()> {
+    pub fn listen(&mut self, address: &str) -> Result<()> {
         let interrupt_receiver = self.create_interrupt_channel()?;
         return ServerInternal::listen_for_tcp_connections(address, interrupt_receiver, &self.handler);
     }
@@ -57,7 +57,7 @@ impl<T: Handler + Sync + Send + 'static> ServerInternal<T> {
 
     /// Listens for and handles incoming TCP connections on the given address, using a separate
     /// thread.
-    fn listen_for_tcp_connections(address: &String, interrupt_receiver: Receiver<u8>, handler: &Arc<T>) -> Result<()> {
+    fn listen_for_tcp_connections(address: &str, interrupt_receiver: Receiver<u8>, handler: &Arc<T>) -> Result<()> {
         let tcp_listener = TcpListener::bind(address)?;
         // We set the listener to non-blocking so that we can check for interrupts, below.
         tcp_listener.set_nonblocking(true)?;
@@ -94,6 +94,7 @@ impl<T: Handler + Sync + Send + 'static> ServerInternal<T> {
 
         let reader = BufReader::new(&stream);
         let writer = BufWriter::new(&stream);
+
         return handler.handle(reader, writer);
     }
 }

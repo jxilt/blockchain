@@ -21,7 +21,7 @@ pub fn main() -> Result<()> {
 
     let mut server = Server::new();
     server.register("/".to_string(), "./src/html/hello_world.html".to_string());
-    server.start(&address)?;
+    server.start(&address, "www.google.com:80")?;
 
     loop_until_exit_requested(stdin().lock())?;
     server.stop()?;

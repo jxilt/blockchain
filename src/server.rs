@@ -30,7 +30,7 @@ impl Server {
 
     /// Starts listening for and handling incoming HTTP connections on the given address. Does not
     /// block the main thread. A given server can only listen once at a time.
-    pub fn start(&mut self, address: &String) -> Result<()> {
+    pub fn start(&mut self, address: &str, db_connection_string: &str) -> Result<()> {
         if self.server_internal.is_some() {
             return Err(ServerError { message: "Server is already listening.".to_string() });
         }
@@ -38,11 +38,10 @@ impl Server {
         // TODO: Provide a flag to set to test mode, so a dummy handler can be injected and the
         //  server can be tested.
         let handler = HttpHandler::new(
-            // TODO: Set the DB connection string dynamically.
-            "localhost:3333".to_string(),
+            db_connection_string,
             // We provide a copy of the routes at the point in time the server is started.
             self.routes.clone()
-        );
+        )?;
         self.server_internal = Some(ServerInternal::new(handler));
 
         return self.server_internal.as_mut()

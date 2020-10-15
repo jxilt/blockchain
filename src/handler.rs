@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 use std::fs;
 use std::io::{Read, Write};
-use std::str::{from_utf8};
+use std::net::TcpStream;
+use std::str::from_utf8;
 
 use crate::servererror::{Result, ServerError};
 
@@ -17,7 +18,7 @@ pub trait Handler {
 /// A handler for HTTP requests.
 pub struct HttpHandler {
     // Used to connect to the database.
-    db_connection_string: String,
+    db_connection: TcpStream,
     // Used to store the server's routes.
     routes: HashMap<String, String>
 }
@@ -42,11 +43,13 @@ impl Handler for HttpHandler {
 }
 
 impl HttpHandler {
-    pub fn new(db_connection_string: String, routes: HashMap<String, String>) -> HttpHandler {
-        HttpHandler {
-            db_connection_string,
+    pub fn new(db_connection_string: &str, routes: HashMap<String, String>) -> Result<HttpHandler> {
+        let db_connection = TcpStream::connect(db_connection_string)?;
+
+        return Ok(HttpHandler {
+            db_connection,
             routes
-        }
+        });
     }
 
     /// Extracts the method, URI and version from an incoming HTTP request.
@@ -177,7 +180,7 @@ mod tests {
     const ERROR_PAGE_404: &str = "./src/html/404.html";
     const ERROR_PAGE_500: &str = "./src/html/500.html";
 
-    fn handle(request: String) -> String {
+    fn handle(request: &str) -> String {
         let mut response = Vec::<u8>::new();
 
         let routes = [
@@ -186,9 +189,9 @@ mod tests {
         ].iter().cloned().collect();
 
         let handler = HttpHandler::new(
-            "dummy_connection_string".to_string(),
+            "www.google.com:80",
             routes
-        );
+        ).unwrap();
 
         let reader = BufReader::new(request.as_bytes());
         let writer = BufWriter::new(&mut response);
@@ -206,7 +209,7 @@ mod tests {
         ];
 
         for (valid_request, file_path) in valid_requests_and_file_paths.iter() {
-            let response = handle(valid_request.to_string());
+            let response = handle(valid_request);
 
             let expected_body = fs::read_to_string(file_path).unwrap();
             let expected_headers = format!("HTTP/1.1 200 OK\r\n\
@@ -241,7 +244,7 @@ mod tests {
         let expected_response = expected_headers + &expected_body;
 
         for request in invalid_requests.iter() {
-            let response = handle(request.to_string());
+            let response = handle(request);
 
             assert_eq!(response, expected_response);
         }
@@ -250,7 +253,7 @@ mod tests {
     #[test]
     fn handler_rejects_unknown_routes() {
         let valid_request = "GET /unknown_route HTTP/1.1\r\n";
-        let response = handle(valid_request.to_string());
+        let response = handle(valid_request);
 
         let expected_body = fs::read_to_string(ERROR_PAGE_404).unwrap();
         let expected_headers = format!("HTTP/1.1 404 NOT FOUND\r\n\
