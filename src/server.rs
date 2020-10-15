@@ -13,6 +13,7 @@ pub struct Server {
     // Listening for and handling requests is delegated to a ServerInternal instance. This instance
     // is only initialised once `start` is called, after the routes have been registered.
     server_internal: Option<ServerInternal<HttpHandler>>,
+    // The current state the server is in. Used to prevent invalid transitions.
     server_state: ServerState
 }
 
@@ -76,7 +77,7 @@ impl Server {
     }
 }
 
-/// The states a server can be in.
+/// The states the server can be in.
 enum ServerState {
     Unstarted,
     Started,

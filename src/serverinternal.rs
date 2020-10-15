@@ -7,22 +7,26 @@ use std::thread::spawn;
 
 use crate::handler::Handler;
 use crate::servererror::{Result, ServerError};
+use crate::serverinternal::InternalServerState::{Unstarted, Started, Stopped};
 
 /// The TCP server itself.
 pub struct ServerInternal<H: Handler> {
-    // Used to interrupt the TCP listening thread.
+    // Used to interrupt the TCP listening thread. This field is set when the server starts
+    // listening, and unset when it stops.
     interrupt_sender: Option<Sender<u8>>,
     // Uses to handle requests. An Arc is used to allow the handler to be shared across responder
     // threads.
     handler: Arc<H>,
+    // The current state the server is in. Used to prevent invalid transitions.
+    server_state: InternalServerState
 }
 
 impl<T: Handler + Sync + Send + 'static> ServerInternal<T> {
     pub fn new(handler: T) -> ServerInternal<T> {
         ServerInternal {
-            // This field is set when the server starts listening, and unset when it stops.
             interrupt_sender: None,
             handler: Arc::new(handler),
+            server_state: Unstarted
         }
     }
 
@@ -30,26 +34,33 @@ impl<T: Handler + Sync + Send + 'static> ServerInternal<T> {
     /// incoming TCP connections on the given address, using a separate thread. A given server can
     /// only listen once at a time.
     pub fn listen(&mut self, address: &str) -> Result<()> {
-        let interrupt_receiver = self.create_interrupt_channel()?;
-        return ServerInternal::listen_for_tcp_connections(address, interrupt_receiver, &self.handler);
+        return match &self.server_state {
+            Unstarted => {
+                self.server_state = Started;
+                let interrupt_receiver = self.create_interrupt_channel()?;
+                ServerInternal::listen_for_tcp_connections(address, interrupt_receiver, &self.handler)
+            },
+            _ => Err(ServerError { message: "The server can only be started while it is unstarted.".into() })
+        }
     }
 
     /// Stops listening for TCP connections.
     pub fn stop_listening(&mut self) -> Result<()> {
-        let interrupt_sender = self.interrupt_sender.as_ref()
-            .ok_or(ServerError { message: "No channel exists to interrupt listening thread.".into() })?;
-        interrupt_sender.send(0)?;
-        self.interrupt_sender = None;
-        return Ok(());
+        return match self.server_state {
+            Started => {
+                self.server_state = Stopped;
+                self.interrupt_sender.as_ref()
+                    .ok_or( ServerError { message: "The server has had an internal issue.".into() })?
+                    .send(0)?;
+                Ok(())
+            },
+            _ => Err(ServerError { message: "The server can only be stopped once it has been started.".into() })
+        }
     }
 
     /// Creates a channel between the main thread and the TCP listening thread, in order to allow
     /// us to interrupt the latter.
     fn create_interrupt_channel(&mut self) -> Result<Receiver<u8>> {
-        if self.interrupt_sender.is_some() {
-           return Err(ServerError { message: "Server is already listening.".into() });
-        }
-
         let (interrupt_sender, interrupt_receiver) = channel::<u8>();
         self.interrupt_sender = Some(interrupt_sender);
         return Ok(interrupt_receiver);
@@ -97,6 +108,13 @@ impl<T: Handler + Sync + Send + 'static> ServerInternal<T> {
 
         return handler.handle(reader, writer);
     }
+}
+
+/// The states the internal server can be in.
+enum InternalServerState {
+    Unstarted,
+    Started,
+    Stopped
 }
 
 #[cfg(test)]
