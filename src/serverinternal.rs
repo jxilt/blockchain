@@ -37,7 +37,7 @@ impl<T: Handler + Sync + Send + 'static> ServerInternal<T> {
     /// Stops listening for TCP connections.
     pub fn stop_listening(&mut self) -> Result<()> {
         let interrupt_sender = self.interrupt_sender.as_ref()
-            .ok_or(ServerError { message: "No channel exists to interrupt listening thread.".to_string() })?;
+            .ok_or(ServerError { message: "No channel exists to interrupt listening thread.".into() })?;
         interrupt_sender.send(0)?;
         self.interrupt_sender = None;
         return Ok(());
@@ -47,7 +47,7 @@ impl<T: Handler + Sync + Send + 'static> ServerInternal<T> {
     /// us to interrupt the latter.
     fn create_interrupt_channel(&mut self) -> Result<Receiver<u8>> {
         if self.interrupt_sender.is_some() {
-           return Err(ServerError { message: "Server is already listening.".to_string() });
+           return Err(ServerError { message: "Server is already listening.".into() });
         }
 
         let (interrupt_sender, interrupt_receiver) = channel::<u8>();

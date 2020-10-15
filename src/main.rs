@@ -20,7 +20,7 @@ pub fn main() -> Result<()> {
     let address = format!("0.0.0.0:{}", port);
 
     let mut server = Server::new();
-    server.register("/".to_string(), "./src/html/hello_world.html".to_string());
+    server.register("/".into(), "./src/html/hello_world.html".into());
     server.start(&address, "www.google.com:80")?;
 
     loop_until_exit_requested(stdin().lock())?;
@@ -35,7 +35,7 @@ fn extract_port_from_args(mut args: Args) -> Result<String> {
         match args.next() {
             None => {
                 println!("No port provided. Using default of '{}'.", DEFAULT_PORT);
-                return Ok(DEFAULT_PORT.to_string());
+                return Ok(DEFAULT_PORT.into());
             },
             Some(maybe_port_flag) => {
                 if maybe_port_flag == "-p".to_string() {
@@ -47,7 +47,7 @@ fn extract_port_from_args(mut args: Args) -> Result<String> {
 
     // The port should be the argument following the '-p' flag.
     let port = args.next()
-        .ok_or(ServerError { message: "No argument passed after '-p' flag.".to_string() })?;
+        .ok_or(ServerError { message: "No argument passed after '-p' flag.".into() })?;
 
     port.parse::<i32>()?;
     println!("Using provided port of {}.", port);

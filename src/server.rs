@@ -12,6 +12,7 @@ pub struct Server {
     // Listening for and handling requests is delegated to a ServerInternal instance. This instance
     // is only initialised once `start` is called, after the routes have been registered.
     server_internal: Option<ServerInternal<HttpHandler>>,
+    // TODO: Add enum to ensure state machine steps.
 }
 
 impl Server {
@@ -32,7 +33,7 @@ impl Server {
     /// block the main thread. A given server can only listen once at a time.
     pub fn start(&mut self, address: &str, db_connection_string: &str) -> Result<()> {
         if self.server_internal.is_some() {
-            return Err(ServerError { message: "Server is already listening.".to_string() });
+            return Err(ServerError { message: "Server is already listening.".into() });
         }
 
         // TODO: Provide a flag to set to test mode, so a dummy handler can be injected and the
@@ -45,14 +46,14 @@ impl Server {
         self.server_internal = Some(ServerInternal::new(handler));
 
         return self.server_internal.as_mut()
-            .ok_or(ServerError { message: "Server failed to start correctly.".to_string() })?
+            .ok_or(ServerError { message: "Server failed to start correctly.".into() })?
             .listen(address);
     }
 
     /// Stops listening for TCP connections.
     pub fn stop(&mut self) -> Result<()> {
         self.server_internal.as_mut()
-            .ok_or(ServerError { message: "Server has not been started.".to_string() })?
+            .ok_or(ServerError { message: "Server has not been started.".into() })?
             .stop_listening()?;
 
         // We reset the server so that it can be started again, with new registered routes.

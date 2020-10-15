@@ -62,7 +62,7 @@ impl HttpHandler {
         loop {
             let current_byte = incoming_bytes.next()
                 // We've reached the end of the bytes without encountering a CRLF.
-                .ok_or(ServerError { message: "HTTP request ended without CRLF.".to_string() })?
+                .ok_or(ServerError { message: "HTTP request ended without CRLF.".into() })?
                 // We've failed to read the byte.
                 ?;
 
@@ -70,19 +70,19 @@ impl HttpHandler {
                 // We've reached the end of the current token.
                 b' ' => {
                     let token_string = from_utf8(&current_token)?;
-                    tokens.push(token_string.to_string());
+                    tokens.push(token_string.into());
                     current_token.clear();
                 }
 
                 // We've reached the end of the line.
                 b'\r' => {
                     let token_string = from_utf8(&current_token)?;
-                    tokens.push(token_string.to_string());
+                    tokens.push(token_string.into());
 
                     // We check that the next byte is a line-feed.
                     let maybe_line_feed = incoming_bytes.next()
                         // There is no next byte.
-                        .ok_or(ServerError { message: "HTTP request start-line not terminated by CRLF.".to_string() })?
+                        .ok_or(ServerError { message: "HTTP request start-line not terminated by CRLF.".into() })?
                         // We've failed to read the byte.
                         ?;
 
@@ -90,7 +90,7 @@ impl HttpHandler {
                         // The start-line is correctly terminated by a CRLF.
                         b'\n' => {
                             if tokens.len() != 3 {
-                                return Err(ServerError { message: "Request line does not have three tokens.".to_string() })
+                                return Err(ServerError { message: "Request line does not have three tokens.".into() })
                             }
 
                             Ok(HttpRequest {
@@ -99,7 +99,7 @@ impl HttpHandler {
                                 http_version: tokens[2].to_string(),
                             })
                         }
-                        _ => Err(ServerError { message: "HTTP request start-line not terminated by LF.".to_string() })
+                        _ => Err(ServerError { message: "HTTP request start-line not terminated by LF.".into() })
                     };
                 }
 
@@ -154,7 +154,7 @@ impl Handler for DummyHandler {
     fn handle<R: Read, W: Write>(&self, reader: R, mut writer: W) -> Result<()> {
         let byte = reader.bytes().next()
             // There were no bytes to read.
-            .ok_or(ServerError { message: "Nothing to read from stream.".to_string() })?
+            .ok_or(ServerError { message: "Nothing to read from stream.".into() })?
             // We've failed to read the byte.
             ?;
 
@@ -184,8 +184,8 @@ mod tests {
         let mut response = Vec::<u8>::new();
 
         let routes = [
-            ("/".to_string(), "./src/html/hello_world.html".to_string()),
-            ("/2".to_string(), "./src/html/hello_world_2.html".to_string())
+            ("/".into(), "./src/html/hello_world.html".into()),
+            ("/2".into(), "./src/html/hello_world_2.html".into())
         ].iter().cloned().collect();
 
         let handler = HttpHandler::new(
@@ -198,7 +198,7 @@ mod tests {
 
         handler.handle(reader, writer).unwrap();
 
-        return from_utf8(&response).unwrap().to_string();
+        return from_utf8(&response).unwrap().into();
     }
 
     #[test]
