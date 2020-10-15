@@ -20,8 +20,9 @@ pub fn main() -> Result<()> {
     let address = format!("0.0.0.0:{}", port);
 
     let mut server = Server::new();
-    server.register("/".into(), "./src/html/hello_world.html".into());
-    server.start(&address, "www.google.com:80")?;
+    server.register_route("/".into(), "./src/html/hello_world.html".into())?;
+    // TODO: Update to a meaningful DB connection string.
+    server.start( "www.google.com:80", &address)?;
 
     loop_until_exit_requested(stdin().lock())?;
     server.stop()?;
