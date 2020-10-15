@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 
 use crate::handler::HttpHandler;
-use crate::persistence::InMemoryDbClient;
 use crate::servererror::{Result, ServerError};
 use crate::serverinternal::ServerInternal;
 
@@ -10,10 +9,9 @@ use crate::serverinternal::ServerInternal;
 pub struct Server {
     // The routes registered so far.
     routes: HashMap<String, String>,
-    // The actual work of listening for and handling requests is delegated to a ServerInternal
-    // instance. This separation allows us to test the server separately from the process of route
-    // registration, and independently of a specific Handler implementation.
-    server_internal: Option<ServerInternal<HttpHandler<InMemoryDbClient>>>,
+    // Listening for and handling requests is delegated to a ServerInternal instance. This instance
+    // is only initialised once `start` is called, after the routes have been registered.
+    server_internal: Option<ServerInternal<HttpHandler>>,
 }
 
 impl Server {
@@ -30,18 +28,21 @@ impl Server {
         self.routes.insert(path, file);
     }
 
-    /// Starts listening for and handling incoming TCP connections on the given address. Does not
+    /// Starts listening for and handling incoming HTTP connections on the given address. Does not
     /// block the main thread. A given server can only listen once at a time.
     pub fn start(&mut self, address: &String) -> Result<()> {
         if self.server_internal.is_some() {
             return Err(ServerError { message: "Server is already listening.".to_string() });
         }
 
-        // We set up the internal server to actually handle the requests.
-        let handler_db_client = InMemoryDbClient::new();
-        // We make a copy of the routes to provide to the handler.
-        let routes = self.routes.clone();
-        let handler = HttpHandler::new(handler_db_client, routes);
+        // TODO: Provide a flag to set to test mode, so a dummy handler can be injected and the
+        //  server can be tested.
+        let handler = HttpHandler::new(
+            // TODO: Set the DB connection string dynamically.
+            "localhost:3333".to_string(),
+            // We provide a copy of the routes at the point in time the server is started.
+            self.routes.clone()
+        );
         self.server_internal = Some(ServerInternal::new(handler));
 
         return self.server_internal.as_mut()

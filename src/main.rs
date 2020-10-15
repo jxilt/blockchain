@@ -6,7 +6,6 @@ use crate::server::Server;
 use crate::servererror::{Result, ServerError};
 
 mod handler;
-mod persistence;
 mod server;
 mod servererror;
 mod serverinternal;

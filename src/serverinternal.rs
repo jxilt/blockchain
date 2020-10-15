@@ -62,7 +62,7 @@ impl<T: Handler + Sync + Send + 'static> ServerInternal<T> {
         // We set the listener to non-blocking so that we can check for interrupts, below.
         tcp_listener.set_nonblocking(true)?;
 
-        // We clone the Arc to avoid capturing a reference to self in the thread we spawn.
+        // We clone the Arc once here to avoid capturing a reference to self in the thread we spawn.
         let handler_arc = Arc::clone(handler);
         spawn(move || {
             for maybe_stream in tcp_listener.incoming() {

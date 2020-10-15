@@ -4,7 +4,6 @@ use std::io::{Read, Write};
 use std::str::{from_utf8};
 
 use crate::servererror::{Result, ServerError};
-use crate::persistence::DbClient;
 
 const ERROR_PAGE_404: &str = "./src/html/404.html";
 const ERROR_PAGE_500: &str = "./src/html/500.html";
@@ -16,36 +15,36 @@ pub trait Handler {
 }
 
 /// A handler for HTTP requests.
-pub struct HttpHandler<T: DbClient> {
+pub struct HttpHandler {
     // Used to connect to the database.
-    db_client: T,
+    db_connection_string: String,
     // Used to store the server's routes.
     routes: HashMap<String, String>
 }
 
-impl<T: DbClient> Handler for HttpHandler<T> {
+impl Handler for HttpHandler {
     /// Reads the HTTP request, handles it and writes an HTTP response.
     fn handle<R: Read, W: Write>(&self, reader: R, writer: W) -> Result<()> {
-        let http_request = HttpHandler::<T>::read_http_request(reader);
+        let http_request = HttpHandler::read_http_request(reader);
 
         return match http_request {
-            Err(_e) => HttpHandler::<T>::write_http_500_response(writer),
+            Err(_e) => HttpHandler::write_http_500_response(writer),
             Ok(http_request) => {
                 let maybe_file_path = self.routes.get(&http_request.request_uri);
 
                 match maybe_file_path {
-                    None => HttpHandler::<T>::write_http_404_response(writer),
-                    Some(file_path) => HttpHandler::<T>::write_http_ok_response(writer, file_path)
+                    None => HttpHandler::write_http_404_response(writer),
+                    Some(file_path) => HttpHandler::write_http_ok_response(writer, file_path)
                 }
             }
         };
     }
 }
 
-impl <T: DbClient> HttpHandler<T> {
-    pub fn new(db_client: T, routes: HashMap<String, String>) -> HttpHandler<T> {
+impl HttpHandler {
+    pub fn new(db_connection_string: String, routes: HashMap<String, String>) -> HttpHandler {
         HttpHandler {
-            db_client,
+            db_connection_string,
             routes
         }
     }
@@ -109,17 +108,17 @@ impl <T: DbClient> HttpHandler<T> {
 
     /// Writes a valid HTTP response.
     fn write_http_ok_response<W: Write>(writer: W, file_path: &str) -> Result<()> {
-        return HttpHandler::<T>::write_http_response(writer, "200 OK", file_path);
+        return HttpHandler::write_http_response(writer, "200 OK", file_path);
     }
 
     /// Writes a 500 HTTP response.
     fn write_http_500_response<W: Write>(writer: W) -> Result<()> {
-        return HttpHandler::<T>::write_http_response(writer, "500 INTERNAL SERVER ERROR", ERROR_PAGE_500);
+        return HttpHandler::write_http_response(writer, "500 INTERNAL SERVER ERROR", ERROR_PAGE_500);
     }
 
     /// Writes a 404 HTTP response.
     fn write_http_404_response<W: Write>(writer: W) -> Result<()> {
-        return HttpHandler::<T>::write_http_response(writer, "404 NOT FOUND", ERROR_PAGE_404);
+        return HttpHandler::write_http_response(writer, "404 NOT FOUND", ERROR_PAGE_404);
     }
 
     /// Writes an HTTP response for a given status code and page.
@@ -174,7 +173,6 @@ mod tests {
     use std::str::from_utf8;
 
     use crate::handler::{Handler, HttpHandler};
-    use crate::persistence::DummyDbClient;
 
     const ERROR_PAGE_404: &str = "./src/html/404.html";
     const ERROR_PAGE_500: &str = "./src/html/500.html";
@@ -182,12 +180,15 @@ mod tests {
     fn handle(request: String) -> String {
         let mut response = Vec::<u8>::new();
 
-        let db_client = DummyDbClient {};
         let routes = [
             ("/".to_string(), "./src/html/hello_world.html".to_string()),
             ("/2".to_string(), "./src/html/hello_world_2.html".to_string())
         ].iter().cloned().collect();
-        let handler = HttpHandler::new(db_client, routes);
+
+        let handler = HttpHandler::new(
+            "dummy_connection_string".to_string(),
+            routes
+        );
 
         let reader = BufReader::new(request.as_bytes());
         let writer = BufWriter::new(&mut response);
