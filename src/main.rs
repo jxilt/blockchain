@@ -16,13 +16,15 @@ const DEFAULT_PORT: &str = "10005";
 /// Expects two env arguments: <program name, port>.
 pub fn main() -> Result<()> {
     let args = env::args();
-    let port = extract_port_from_args(args)?;
-    let address = format!("0.0.0.0:{}", port);
+    let port = port_from_args_or_default(args)?;
+    // TODO: Get database connection string from command line.
 
     let mut server = Server::new();
-    server.register_route("/".into(), "./src/html/hello_world.html".into())?;
+    server.set_port(port);
     // TODO: Update to a meaningful DB connection string.
-    server.start( "www.google.com:80", &address)?;
+    server.set_db_connection_string("www.google.com:80".into());
+    server.register_route("/".into(), "./src/html/hello_world.html".into())?;
+    server.start()?;
 
     loop_until_exit_requested(stdin().lock())?;
     server.stop()?;
@@ -30,8 +32,8 @@ pub fn main() -> Result<()> {
     return Ok(());
 }
 
-/// Returns a localhost address based on the port provided using the '-p' flag.
-fn extract_port_from_args(mut args: Args) -> Result<String> {
+/// Returns the port specified in the arguments using the '-p' flag, or returns the default port.
+fn port_from_args_or_default(mut args: Args) -> Result<String> {
     loop {
         match args.next() {
             None => {

@@ -153,6 +153,8 @@ mod tests {
         return format!("localhost:{}", old_port);
     }
 
+    // TODO: Tests around the unstarted state.
+
     #[test]
     fn server_allows_connections() {
         let address = get_address();
@@ -203,8 +205,9 @@ mod tests {
         server.stop_listening().unwrap();
     }
 
+    // TODO: Update this test to check server can only be started once.
     #[test]
-    fn server_can_only_listen_once_at_a_time() {
+    fn server_can_only_be_started_once() {
         let mut server = ServerInternal::new(DummyHandler {});
         let address = get_address();
         server.listen(&address).unwrap();
