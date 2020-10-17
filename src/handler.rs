@@ -9,7 +9,7 @@ use crate::servererror::{Result, ServerError};
 const ERROR_PAGE_404: &str = "./src/html/404.html";
 const ERROR_PAGE_500: &str = "./src/html/500.html";
 
-/// A handler for TCP streams.
+/// A handler for streams.
 pub trait Handler {
     // Handles incoming connections.
     fn handle<R: Read, W: Write>(&self, reader: R, writer: W) -> Result<()>;
@@ -149,8 +149,8 @@ pub struct HttpRequest {
 pub struct DummyHandler;
 
 impl Handler for DummyHandler {
-    /// Reads the first byte. Enters an infinite loop if it reads the byte '#', which is useful for
-    /// testing parallelism of the server. Otherwise, writes "DUMMY" to the stream.
+    /// Reads the first byte. Enters an infinite loop if the first byte is '#' (this is useful for
+    /// testing the parallelism of the server). Otherwise, writes "DUMMY" back out.
     fn handle<R: Read, W: Write>(&self, reader: R, mut writer: W) -> Result<()> {
         let byte = reader.bytes().next()
             // There were no bytes to read.
@@ -176,23 +176,22 @@ mod tests {
     use std::str::from_utf8;
 
     use crate::handler::{Handler, HttpHandler};
+    use std::collections::HashMap;
 
     const ERROR_PAGE_404: &str = "./src/html/404.html";
     const ERROR_PAGE_500: &str = "./src/html/500.html";
 
     fn handle(request: &str) -> String {
-        let mut response = Vec::<u8>::new();
-
-        let routes = [
-            ("/".into(), "./src/html/hello_world.html".into()),
-            ("/2".into(), "./src/html/hello_world_2.html".into())
-        ].iter().cloned().collect();
+        let mut routes = HashMap::new();
+        routes.insert("/".into(), "./src/html/hello_world.html".into());
+        routes.insert("/2".into(), "./src/html/hello_world_2.html".into());
 
         let handler = HttpHandler::new(
             "www.google.com:80",
             routes
         ).unwrap();
 
+        let mut response = Vec::<u8>::new();
         let reader = BufReader::new(request.as_bytes());
         let writer = BufWriter::new(&mut response);
 
